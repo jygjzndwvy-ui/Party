@@ -60,6 +60,8 @@
   --btn-fill-fg: var(--bg);
 }
 .dark .btn:not(.btn--ghost):not(.btn--dark):not(.btn--quiet), .on-dark .btn:not(.btn--ghost) { --btn-fill: #fff; --btn-fill-fg: #101B2D; }
+/* светлая карточка внутри тёмной сцены: заливка при наведении снова тёмная */
+.on-dark .card .btn:not(.btn--ghost):not(.btn--quiet), .on-dark .hero-card .btn:not(.btn--ghost):not(.btn--quiet) { --btn-fill: var(--text); --btn-fill-fg: var(--bg-raised); }
 .btn--sm { min-height: 42px; padding: 0 18px; font-size: var(--fs-sm); }
 .btn--lg { min-height: 64px; padding: 0 34px; font-size: 1.0625rem; }
 .btn--block { width: 100%; }

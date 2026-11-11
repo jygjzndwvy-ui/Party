@@ -407,6 +407,8 @@ strong, b { font-weight: var(--fw-medium); }
   --btn-fill-fg: var(--bg);
 }
 .dark .btn:not(.btn--ghost):not(.btn--dark):not(.btn--quiet), .on-dark .btn:not(.btn--ghost) { --btn-fill: #fff; --btn-fill-fg: #101B2D; }
+/* светлая карточка внутри тёмной сцены: заливка при наведении снова тёмная */
+.on-dark .card .btn:not(.btn--ghost):not(.btn--quiet), .on-dark .hero-card .btn:not(.btn--ghost):not(.btn--quiet) { --btn-fill: var(--text); --btn-fill-fg: var(--bg-raised); }
 .btn--sm { min-height: 42px; padding: 0 18px; font-size: var(--fs-sm); }
 .btn--lg { min-height: 64px; padding: 0 34px; font-size: 1.0625rem; }
 .btn--block { width: 100%; }
@@ -1859,6 +1861,8 @@ html.js .payw.is-in .payw__card--toast { opacity: 1; transform: none; transition
 .score { display: grid; gap: 22px; padding: clamp(20px, 2.6vw, 32px); border-radius: var(--r-lg); background: var(--bg-raised); box-shadow: var(--shadow-2), inset 0 0 0 1px var(--line); }
 .score__top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
 .score .seg__btn { min-height: 40px; padding: 0 14px; }
+.scoring__widget, .scoring__text, .split__widget, .split__text { min-width: 0; }
+@media (max-width: 480px) { .score__top .seg { display: flex; width: 100%; } .score__top .seg__btn { flex: 1; padding: 0 6px; font-size: 0.8125rem; } }
 .score__gauge { position: relative; display: grid; justify-items: center; }
 .score__gauge svg { width: min(320px, 100%); overflow: visible; }
 .score__arc-bg, .score__arc { fill: none; stroke-width: 16; stroke-linecap: round; }
