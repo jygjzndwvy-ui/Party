@@ -232,9 +232,9 @@ export function scoreWidget({ demo = true, sets = SCORE_SETS, initial = 'borrowe
   return html`
 <div class="score" data-score='${esc(JSON.stringify(sets))}' data-inview>
   <div class="score__top">
-    <div class="seg" role="group" aria-label="Кого оцениваем">
-      ${keys.map((k) => `<button class="seg__btn${k === initial ? ' is-active' : ''}" type="button" data-value="${k}" aria-pressed="${k === initial}">${sets[k].label}</button>`)}
-    </div>
+    ${keys.length > 1
+      ? `<div class="seg" role="group" aria-label="Кого оцениваем">${keys.map((k) => `<button class="seg__btn${k === initial ? ' is-active' : ''}" type="button" data-value="${k}" aria-pressed="${k === initial}">${sets[k].label}</button>`).join('')}</div>`
+      : `<span class="eyebrow">${sets[initial].label}</span>`}
     ${demo ? '<span class="demo-note">демо-данные</span>' : ''}
   </div>
   <div class="score__gauge">

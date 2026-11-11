@@ -25,6 +25,7 @@
     var current = rooms[0].getAttribute('data-room');
     var yaw = -24, pitch = 0, v = 0, drag = false, lx = 0, ly = 0, moved = 0;
     var touched = false, idleAt = 0, visible = false, raf = 0, busy = false;
+    var persp = 400, viewH = 400;
 
     // Геометрия: для каждой части комнаты запоминаем её углы в координатах
     // комнаты (сторона куба = 1). Потом по ним решаем, видна ли часть.
@@ -73,6 +74,7 @@
     function size() {
       var w = view.clientWidth || 600, h = view.clientHeight || 400;
       var P = Math.max(220, w * 0.5, h * 0.56);
+      persp = P; viewH = h;
       root.style.setProperty('--persp', P.toFixed(1) + 'px');
       root.style.setProperty('--s', (P * 2).toFixed(1) + 'px');
       root.style.setProperty('--h', (P * 2 * HK).toFixed(1) + 'px');
@@ -80,6 +82,8 @@
     function apply() {
       cube.style.setProperty('--yaw', yaw.toFixed(2) + 'deg');
       cube.style.setProperty('--pitch', pitch.toFixed(2) + 'deg');
+      // линия горизонта для запасного фона: сверху цвет потолка, снизу пола
+      view.style.setProperty('--hz', (50 + (Math.tan(pitch * RAD) * persp / viewH) * 100).toFixed(1) + '%');
       cull();
       if (me) {
         var c = centers[current] || [0, 0];
@@ -89,6 +93,12 @@
     function markRoom() {
       btns.forEach(function (b) { var on = b.getAttribute('data-go') === current; b.classList.toggle('is-active', on); b.setAttribute('aria-pressed', on); });
       root.querySelectorAll('.plan__room').forEach(function (r) { r.classList.toggle('is-active', r.getAttribute('data-room') === current); });
+      var active = root.querySelector('.tour__room.is-active');
+      if (active) {
+        var cs = getComputedStyle(active);
+        view.style.setProperty('--c-floor', cs.getPropertyValue('--floor'));
+        view.style.setProperty('--c-ceil', cs.getPropertyValue('--ceil'));
+      }
     }
     function go(key) {
       if (key === current || busy) return;

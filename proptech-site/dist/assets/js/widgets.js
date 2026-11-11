@@ -136,7 +136,8 @@
       var sets = JSON.parse(el.getAttribute('data-score'));
       var arc = $('.score__arc', el), num = $('[data-score-num]', el), verdict = $('[data-score-verdict]', el);
       var names = $$('[data-score-name]', el), vals = $$('[data-score-val]', el), bars = $$('.score__bar i', el);
-      var key = ($('.seg__btn.is-active', el) || {}).getAttribute ? $('.seg__btn.is-active', el).getAttribute('data-value') : Object.keys(sets)[0];
+      var activeBtn = $('.seg__btn.is-active', el);
+      var key = activeBtn ? activeBtn.getAttribute('data-value') : Object.keys(sets)[0];
       function show(k) {
         var s = sets[k];
         if (!s) return;

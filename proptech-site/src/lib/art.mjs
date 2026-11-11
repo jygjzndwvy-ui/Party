@@ -564,3 +564,41 @@ export function logoMark({ size = 32, lit = 1, cls = 'logo__mark' } = {}) {
     .map(([x, y], i) => `<rect class="logo__pane${i === lit ? ' is-lit' : ''}" x="${x}" y="${y}" width="9" height="9" rx="2.2"/>`)
     .join('')}</svg>`;
 }
+
+// ── Схема района: заглушка на месте карты ───────────────────────────────────
+// Когда подключите Яндекс Карты, замените этот блок виджетом карты.
+export function mapArt(seed = 1) {
+  const rand = rng(hash(`map${seed}`));
+  const W = 800;
+  const H = 360;
+  let s = `<rect width="${W}" height="${H}" class="map__bg"/>`;
+  const cols = [0, 150 + rand() * 30, 310 + rand() * 40, 470 + rand() * 30, 640 + rand() * 30, W];
+  const rows = [0, 90 + rand() * 20, 190 + rand() * 30, 280 + rand() * 20, H];
+  const park = [1 + Math.floor(rand() * 3), 1 + Math.floor(rand() * 2)];
+  for (let c = 0; c < cols.length - 1; c++) {
+    for (let r = 0; r < rows.length - 1; r++) {
+      const x = cols[c] + 9;
+      const y = rows[r] + 9;
+      const w = cols[c + 1] - cols[c] - 18;
+      const h = rows[r + 1] - rows[r] - 18;
+      if (c === park[0] && r === park[1]) {
+        s += `<rect x="${n(x)}" y="${n(y)}" width="${n(w)}" height="${n(h)}" rx="14" class="map__park"/>`;
+        for (let t = 0; t < 7; t++) s += `<circle cx="${n(x + 16 + rand() * (w - 32))}" cy="${n(y + 14 + rand() * (h - 28))}" r="${n(6 + rand() * 6)}" class="map__tree"/>`;
+        continue;
+      }
+      s += `<rect x="${n(x)}" y="${n(y)}" width="${n(w)}" height="${n(h)}" rx="8" class="map__block"/>`;
+      const k = 2 + Math.floor(rand() * 3);
+      for (let b = 0; b < k; b++) {
+        const bw = 22 + rand() * (w / k - 30);
+        const bh = 16 + rand() * (h - 40);
+        s += `<rect x="${n(x + 8 + (w / k) * b)}" y="${n(y + 8 + rand() * Math.max(2, h - bh - 16))}" width="${n(Math.max(14, bw))}" height="${n(Math.max(12, bh))}" rx="3" class="map__house"/>`;
+      }
+    }
+  }
+  const ry = rows[2] + 40;
+  s += `<path d="M-20 ${n(ry + 40)}C160 ${n(ry - 30)} 300 ${n(ry + 70)} 470 ${n(ry + 10)}S720 ${n(ry - 50)} 830 ${n(ry + 30)}" class="map__river"/>`;
+  const px = (cols[2] + cols[3]) / 2;
+  const py = rows[1] + 4;
+  s += `<g class="map__pin" transform="translate(${n(px)} ${n(py)})"><circle r="26" class="map__pulse"/><path d="M0 0C-14 -16 -18 -24 -18 -32a18 18 0 0 1 36 0c0 8-4 16-18 32z" class="map__pin-body"/><circle cy="-32" r="7" class="map__pin-dot"/></g>`;
+  return `<svg class="map" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Схема района">${s}</svg>`;
+}

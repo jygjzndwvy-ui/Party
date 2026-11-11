@@ -43,7 +43,7 @@
         '<div class="obj__price"><b>' + Obj.price(o) + '</b><span>' + Obj.perMeter(o) + '</span></div>' +
         '<h3 class="obj__title"><a href="' + url + '">' + Obj.title(o) + '</a></h3>' +
         '<p class="obj__addr">' + ico('pin') + '<span>' + esc(o.district + ', ' + o.address) + '</span></p>' +
-        '<ul class="obj__meta"><li>' + Obj.floor(o) + '</li><li>' + o.year + NB + 'г.</li>' + (o.checked ? '<li class="obj__ok">' + ico('check') + 'Проверен</li>' : '') + (opt.demo ? '<li class="obj__demo">демо</li>' : '') + '</ul>' +
+        '<ul class="obj__meta"><li>' + Obj.floor(o) + '</li>' + (o.checked ? '<li class="obj__ok">' + ico('check') + 'Проверен</li>' : '') + (opt.demo ? '<li class="obj__demo">демо</li>' : '') + '</ul>' +
         '</div></article>'
       );
     },

@@ -485,13 +485,16 @@
     var ok = true, first = null;
     $$('[required]', form).forEach(function (el) {
       if (el.offsetParent === null) return; // скрытые шаги не проверяем
-      var good = el.type === 'checkbox' ? el.checked : el.type === 'tel' ? el.value.replace(/\D/g, '').length === 11 : el.value.trim().length > 1;
+      var good = el.type === 'checkbox' ? el.checked
+        : el.type === 'radio' ? !!form.querySelector('[name="' + el.name + '"]:checked')
+        : el.type === 'tel' ? el.value.replace(/\D/g, '').length === 11
+        : el.value.trim().length > 1;
       var f = el.closest('.field, .check');
       if (f) f.classList.toggle('is-invalid', !good);
       el.setAttribute('aria-invalid', !good);
       if (!good) { ok = false; first = first || el; }
     });
-    if (first) { first.focus(); var box = first.closest('.field, .check'); if (box) { box.style.animation = 'none'; void box.offsetWidth; box.style.animation = 'shake .4s'; } }
+    if (first) { first.focus(); var box = first.closest('.field, .check, .steps-form__opts'); if (box) { box.style.animation = 'none'; void box.offsetWidth; box.style.animation = 'shake .4s'; } }
     return ok;
   }
   App.validate = validate;
