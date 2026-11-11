@@ -80,8 +80,12 @@
     d.addEventListener('click', function (e) {
       if (!e.target.closest('[data-share]')) return;
       var data = { title: d.title, url: location.href };
-      if (navigator.share) { navigator.share(data).catch(function () {}); return; }
-      if (navigator.clipboard) navigator.clipboard.writeText(location.href).then(function () { App.toast('Ссылка скопирована'); }, function () { App.toast('Скопируйте ссылку из адресной строки', 'info'); });
+      var copy = function () {
+        var fail = function () { App.toast('Скопируйте ссылку из адресной строки', 'info'); };
+        if (navigator.clipboard) navigator.clipboard.writeText(location.href).then(function () { App.toast('Ссылка скопирована'); }, fail); else fail();
+      };
+      if (navigator.share) navigator.share(data).catch(function (err) { if (!err || err.name !== 'AbortError') copy(); });
+      else copy();
     });
 
     // нижняя панель с ценой появляется, когда карточка с кнопками ушла из вида

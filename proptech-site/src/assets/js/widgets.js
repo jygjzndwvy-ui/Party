@@ -27,6 +27,13 @@
         word.textContent = App.plural(n, 'объект', 'объекта', 'объектов');
       };
       form.addEventListener('change', function (e) { if (e.target.name === 'deal') fillPrices(); count(); });
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var q = new URLSearchParams();
+        new FormData(form).forEach(function (v, k) { if (v && !(k === 'deal' && v === 'sale')) q.set(k, v); });
+        var s = q.toString();
+        location.href = form.getAttribute('action') + (s ? '?' + s : '');
+      });
       fillPrices();
       out.setAttribute('data-now', out.textContent);
     }
