@@ -1,0 +1,141 @@
+/* ═══ ДВИЖЕНИЕ ════════════════════════════════════════════════════════════
+   Все состояния «до появления» включаются только при html.js, поэтому без
+   скриптов страница видна целиком. При prefers-reduced-motion всё статично.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Появление при прокрутке ─────────────────────────────────────────────── */
+html.js [data-reveal] {
+  opacity: 0;
+  transform: translateY(32px);
+  transition: opacity var(--d-4) var(--ease-out), transform var(--d-4) var(--ease-out), clip-path 1.2s var(--ease-out);
+  transition-delay: calc(var(--i, 0) * 80ms);
+  will-change: opacity, transform;
+}
+html.js [data-reveal="fade"] { transform: none; }
+html.js [data-reveal="scale"] { transform: scale(0.92); }
+html.js [data-reveal="left"] { transform: translateX(-40px); }
+html.js [data-reveal="right"] { transform: translateX(40px); }
+html.js [data-reveal="clip"] { opacity: 1; transform: none; clip-path: inset(0 0 100% 0 round var(--clip-r, var(--r-lg))); }
+html.js [data-reveal="clip-x"] { opacity: 1; transform: none; clip-path: inset(0 100% 0 0 round var(--clip-r, var(--r-lg))); }
+html.js [data-reveal].is-in { opacity: 1; transform: none; will-change: auto; }
+html.js [data-reveal^="clip"].is-in { clip-path: inset(0 0 0 0 round var(--clip-r, var(--r-lg))); }
+
+/* ── Заголовки по словам ─────────────────────────────────────────────────── */
+.w { display: inline-block; overflow: hidden; vertical-align: top; padding: 0.12em 0.04em 0.16em; margin: -0.12em -0.04em -0.16em; }
+.w__i { display: inline-block; transform: translateY(115%) rotate(5deg); transform-origin: left bottom; transition: transform 1.1s var(--ease-out); transition-delay: calc(var(--wi, 0) * 55ms + var(--split-delay, 0ms)); will-change: transform; }
+.is-in .w__i, .is-in.w__i { transform: none; }
+
+/* ── Прорисовка линий ────────────────────────────────────────────────────── */
+.i--draw > * { stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset 1.1s var(--ease-out); }
+.is-in .i--draw > *, .is-active .i--draw > *, .i--draw.is-in > * { stroke-dashoffset: 0; }
+.i--draw > *:nth-child(2) { transition-delay: 0.15s; }
+.i--draw > *:nth-child(3) { transition-delay: 0.3s; }
+html:not(.js) .i--draw > * { stroke-dashoffset: 0; }
+
+/* ── Кадры ───────────────────────────────────────────────────────────────── */
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pop { from { transform: scale(0); } to { transform: scale(1); } }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+@keyframes pulse-dot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.7); } }
+@keyframes pane-blink { 0%, 100% { fill: currentColor; opacity: 0.3; } 30%, 60% { fill: var(--amber-400); opacity: 1; } }
+@keyframes toast-in { from { opacity: 0; transform: translateY(24px) scale(0.92); } to { opacity: 1; transform: none; } }
+@keyframes toast-out { to { opacity: 0; transform: translateY(12px) scale(0.96); } }
+@keyframes step-in { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+@keyframes float-y { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+@keyframes shimmer { to { background-position: -200% 0; } }
+@keyframes ping { 0% { transform: scale(1); opacity: 0.7; } 100% { transform: scale(2.6); opacity: 0; } }
+@keyframes tv-flicker { 0%, 100% { opacity: 0.9; } 18% { opacity: 0.55; } 34% { opacity: 1; } 52% { opacity: 0.7; } 71% { opacity: 0.95; } 86% { opacity: 0.6; } }
+@keyframes scan { 0% { transform: translateY(-10%); opacity: 0; } 12%, 88% { opacity: 1; } 100% { transform: translateY(110%); opacity: 0; } }
+@keyframes shake { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+@keyframes heart-pop { 0% { transform: scale(1); } 35% { transform: scale(1.4); } 60% { transform: scale(0.88); } 100% { transform: scale(1); } }
+@keyframes rise { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* ── Заставка при первом заходе ──────────────────────────────────────────── */
+.pre {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: grid;
+  place-items: center;
+  background: var(--night-900);
+  color: #fff;
+  transition: clip-path 1s var(--ease-in-out), visibility 0s 1s;
+  clip-path: inset(0 0 0 0);
+}
+.pre.is-done { clip-path: inset(0 0 100% 0); visibility: hidden; }
+.pre__in { display: grid; justify-items: center; gap: 22px; transition: transform 0.9s var(--ease-in-out), opacity 0.5s; }
+.pre.is-done .pre__in { transform: translateY(-60px); opacity: 0; }
+.pre__mark { width: 84px; height: 84px; }
+.pre__mark .logo__pane { opacity: 0.16; animation: pre-pane 0.5s var(--ease-out) forwards; }
+.pre__mark .logo__pane:nth-of-type(2) { animation-delay: 0.1s; }
+.pre__mark .logo__pane:nth-of-type(3) { animation-delay: 0.28s; }
+.pre__mark .logo__pane:nth-of-type(5) { animation-delay: 0.46s; }
+.pre__mark .logo__pane:nth-of-type(4) { animation-delay: 0.64s; }
+.pre__name { font-size: 1.75rem; font-weight: 600; letter-spacing: -0.04em; overflow: hidden; }
+.pre__name span { display: inline-block; animation: rise 0.8s var(--ease-out) 0.25s both; }
+@keyframes pre-pane { to { fill: var(--amber-400); opacity: 1; filter: drop-shadow(0 0 6px rgba(255, 193, 69, 0.9)); } }
+
+/* ── Метка у курсора ─────────────────────────────────────────────────────── */
+.cursor {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 400;
+  pointer-events: none;
+  will-change: transform;
+}
+.cursor__in {
+  display: grid;
+  place-items: center;
+  width: 92px;
+  height: 92px;
+  margin: -46px 0 0 -46px;
+  border-radius: 50%;
+  background: var(--amber-400);
+  color: #101B2D;
+  font: 600 11px/1 var(--font-mono);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-align: center;
+  box-shadow: 0 10px 40px -8px rgba(255, 193, 69, 0.7);
+  transform: scale(0);
+  transition: transform 0.5s var(--ease-out);
+}
+.cursor.is-on .cursor__in { transform: scale(1); transition: transform 0.6s var(--ease-spring); }
+.cursor.is-down .cursor__in { transform: scale(0.82); }
+
+/* ── Бегущая строка ──────────────────────────────────────────────────────── */
+.marquee { overflow: hidden; white-space: nowrap; user-select: none; }
+.marquee__track { display: inline-flex; will-change: transform; }
+.marquee__group { display: inline-flex; align-items: center; flex: none; }
+
+/* ── Переходы между страницами ───────────────────────────────────────────── */
+@view-transition { navigation: auto; }
+::view-transition-old(root) { animation: vt-out 0.28s var(--ease-in-out) both; }
+::view-transition-new(root) { animation: vt-in 0.6s var(--ease-out) both; }
+@keyframes vt-out { to { opacity: 0; transform: translateY(-16px); } }
+@keyframes vt-in { from { opacity: 0; transform: translateY(24px); } }
+html.theme-vt::view-transition-old(root), html.theme-vt::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+html.theme-vt::view-transition-old(root) { z-index: 1; }
+html.theme-vt::view-transition-new(root) { z-index: 2; }
+
+/* ── Полоса прогресса чтения ─────────────────────────────────────────────── */
+.progress { position: fixed; left: 0; top: 0; z-index: 101; height: 3px; width: 100%; background: var(--amber-400); transform: scaleX(var(--p, 0)); transform-origin: left; box-shadow: 0 0 12px rgba(255, 193, 69, 0.8); pointer-events: none; }
+
+/* ── Уважение к настройке «меньше движения» ──────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0s !important;
+    transition-duration: 0.001ms !important;
+    transition-delay: 0s !important;
+  }
+  html.js [data-reveal] { opacity: 1; transform: none; clip-path: none; }
+  .w__i { transform: none; }
+  .i--draw > * { stroke-dashoffset: 0; }
+  .pre, .cursor, .progress { display: none; }
+  ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "proptech-site",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Шаблон сайта цифрового агентства недвижимости",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --serve"
+  },
+  "engines": { "node": ">=18" }
+}
