@@ -15,10 +15,12 @@ html.js [data-reveal="fade"] { transform: none; }
 html.js [data-reveal="scale"] { transform: scale(0.92); }
 html.js [data-reveal="left"] { transform: translateX(-40px); }
 html.js [data-reveal="right"] { transform: translateX(40px); }
-html.js [data-reveal="clip"] { opacity: 1; transform: none; clip-path: inset(0 0 100% 0 round var(--clip-r, var(--r-lg))); }
-html.js [data-reveal="clip-x"] { opacity: 1; transform: none; clip-path: inset(0 100% 0 0 round var(--clip-r, var(--r-lg))); }
+html.js [data-reveal^="clip"] { opacity: 1; transform: none; }
+html.js [data-reveal^="clip"] > * { transition: clip-path 1.3s var(--ease-out), transform 1.6s var(--ease-out); }
+html.js [data-reveal="clip"] > * { clip-path: inset(0 0 100% 0 round var(--clip-r, var(--r-lg))); transform: translateY(40px); }
+html.js [data-reveal="clip-x"] > * { clip-path: inset(0 100% 0 0 round var(--clip-r, var(--r-lg))); }
 html.js [data-reveal].is-in { opacity: 1; transform: none; will-change: auto; }
-html.js [data-reveal^="clip"].is-in { clip-path: inset(0 0 0 0 round var(--clip-r, var(--r-lg))); }
+html.js [data-reveal^="clip"].is-in > * { clip-path: inset(0 0 0 0 round var(--clip-r, var(--r-lg))); transform: none; }
 
 /* ── Заголовки по словам ─────────────────────────────────────────────────── */
 .w { display: inline-block; overflow: hidden; vertical-align: top; padding: 0.12em 0.04em 0.16em; margin: -0.12em -0.04em -0.16em; }
@@ -133,7 +135,8 @@ html.theme-vt::view-transition-new(root) { z-index: 2; }
     transition-duration: 0.001ms !important;
     transition-delay: 0s !important;
   }
-  html.js [data-reveal] { opacity: 1; transform: none; clip-path: none; }
+  html.js [data-reveal] { opacity: 1; transform: none; }
+  html.js [data-reveal^="clip"] > * { clip-path: none; transform: none; }
   .w__i { transform: none; }
   .i--draw > * { stroke-dashoffset: 0; }
   .pre, .cursor, .progress { display: none; }

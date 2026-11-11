@@ -246,7 +246,7 @@
     if (reduce) { base = baseTarget; measureT(); t = tTarget; syncWindows(0); draw(0); }
     else { kick(); initTags(); }
 
-    if ('ResizeObserver' in window) new ResizeObserver(function () { layout(); if (reduce) draw(0); else kick(); }).observe(root);
+    if ('ResizeObserver' in window) new ResizeObserver(function () { layout(); draw(time); if (!reduce) kick(); }).observe(root);
     if ('IntersectionObserver' in window) new IntersectionObserver(function (en) { visible = en[0].isIntersecting; if (visible) { last = 0; kick(); } }, { rootMargin: '80px' }).observe(root);
     document.addEventListener('visibilitychange', function () { if (!document.hidden) { last = 0; kick(); } });
     window.addEventListener('pointermove', function (e) { if (e.pointerType === 'touch') return; pxTarget = (e.clientX / window.innerWidth - 0.5) * 2; }, { passive: true });

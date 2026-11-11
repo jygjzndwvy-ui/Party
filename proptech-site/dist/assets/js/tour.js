@@ -1,16 +1,22 @@
-/* Демо 3D-тура: комната собрана из шести плоскостей в CSS 3D, камера стоит
+/* Демо 3D-тура: комната собрана из плоскостей в CSS 3D, камера стоит
    в центре. Тянем мышью или пальцем, стрелки на клавиатуре тоже работают.
+   Стены нарезаны на полосы, пол и потолок на плитки. Скрипт показывает
+   только части перед камерой: то, что уходит за спину, браузеру рисовать
+   не нужно (а некоторые браузеры такие плоскости рисуют с ошибками).
    Когда у объекта появится настоящий тур, вместо демо подставится iframe
    (поле tourUrl в content/objects.mjs). */
 (function () {
   'use strict';
   var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var RAD = Math.PI / 180;
   function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 
   function Tour(root) {
     var view = root.querySelector('.tour__view');
     var cube = root.querySelector('.tour__cube');
     if (!view || !cube) return;
+    var N = +root.getAttribute('data-n') || 6;
+    var HK = 0.6; // высота стены относительно её ширины
     var rooms = Array.prototype.slice.call(root.querySelectorAll('.tour__room'));
     var btns = Array.prototype.slice.call(root.querySelectorAll('.tour__room-btn'));
     var me = root.querySelector('.tour__me');
@@ -20,16 +26,61 @@
     var yaw = -24, pitch = 0, v = 0, drag = false, lx = 0, ly = 0, moved = 0;
     var touched = false, idleAt = 0, visible = false, raf = 0, busy = false;
 
+    // Геометрия: для каждой части комнаты запоминаем её углы в координатах
+    // комнаты (сторона куба = 1). Потом по ним решаем, видна ли часть.
+    function wallPoint(ry, u, y) {
+      var a = ry * RAD, c = Math.cos(a), s = Math.sin(a);
+      return [u * c - 0.5 * s, y, -u * s - 0.5 * c];
+    }
+    var parts = {};
+    rooms.forEach(function (room) {
+      var list = [];
+      room.querySelectorAll('.tour__strip').forEach(function (el) {
+        var ry = +el.getAttribute('data-ry'), i = +el.getAttribute('data-i');
+        var u0 = (i - N / 2) / N, u1 = (i + 1 - N / 2) / N, h = HK / 2;
+        list.push({ el: el, on: true, pts: [wallPoint(ry, u0, -h), wallPoint(ry, u1, -h), wallPoint(ry, u0, h), wallPoint(ry, u1, h)] });
+      });
+      room.querySelectorAll('.tour__tile').forEach(function (el) {
+        var i = +el.getAttribute('data-i'), j = +el.getAttribute('data-j');
+        var u0 = (i - N / 2) / N, u1 = (i + 1 - N / 2) / N, v0 = (j - N / 2) / N, v1 = (j + 1 - N / 2) / N;
+        var floor = el.classList.contains('tour__tile--floor');
+        var y = floor ? HK / 2 : -HK / 2, k = floor ? 1 : -1;
+        list.push({ el: el, on: true, pts: [[u0, y, v0 * k], [u1, y, v0 * k], [u0, y, v1 * k], [u1, y, v1 * k]] });
+      });
+      room.querySelectorAll('.tour__spot').forEach(function (el) {
+        var ry = +el.getAttribute('data-ry'), u = +el.getAttribute('data-u'), vv = +el.getAttribute('data-v');
+        list.push({ el: el, on: true, pts: [wallPoint(ry, u, vv * HK)] });
+      });
+      parts[room.getAttribute('data-room')] = list;
+    });
+
+    function cull() {
+      var list = parts[current];
+      if (!list) return;
+      var sy = Math.sin(yaw * RAD), cy = Math.cos(yaw * RAD), sp = Math.sin(pitch * RAD), cp = Math.cos(pitch * RAD);
+      for (var n = 0; n < list.length; n++) {
+        var p = list[n], front = true;
+        for (var k = 0; k < p.pts.length; k++) {
+          var q = p.pts[k];
+          var z1 = -q[0] * sy + q[2] * cy; // поворот вокруг вертикали
+          var z2 = q[1] * sp + z1 * cp;    // наклон камеры
+          if (z2 > -0.04) { front = false; break; }
+        }
+        if (front !== p.on) { p.on = front; p.el.style.display = front ? '' : 'none'; }
+      }
+    }
+
     function size() {
-      var w = view.clientWidth || 600;
-      var P = Math.max(240, w * 0.56);
+      var w = view.clientWidth || 600, h = view.clientHeight || 400;
+      var P = Math.max(220, w * 0.5, h * 0.56);
       root.style.setProperty('--persp', P.toFixed(1) + 'px');
       root.style.setProperty('--s', (P * 2).toFixed(1) + 'px');
-      root.style.setProperty('--h', (P * 1.2).toFixed(1) + 'px');
+      root.style.setProperty('--h', (P * 2 * HK).toFixed(1) + 'px');
     }
     function apply() {
       cube.style.setProperty('--yaw', yaw.toFixed(2) + 'deg');
       cube.style.setProperty('--pitch', pitch.toFixed(2) + 'deg');
+      cull();
       if (me) {
         var c = centers[current] || [0, 0];
         me.setAttribute('transform', 'translate(' + c[0] + ' ' + c[1] + ') rotate(' + yaw.toFixed(1) + ')');
@@ -47,7 +98,7 @@
       setTimeout(function () {
         rooms.forEach(function (r) { r.classList.toggle('is-active', r.getAttribute('data-room') === key); });
         current = key;
-        yaw = -20; pitch = 0; v = 0;
+        yaw = -24; pitch = 0; v = 0;
         markRoom(); apply();
         root.classList.remove('is-moving');
         busy = false;
@@ -90,10 +141,11 @@
     view.addEventListener('keydown', function (e) {
       var k = e.key;
       if (k === 'ArrowLeft') yaw -= 12; else if (k === 'ArrowRight') yaw += 12;
-      else if (k === 'ArrowUp') pitch = clamp(pitch - 5, -16, 16); else if (k === 'ArrowDown') pitch = clamp(pitch + 5, -16, 16);
+      else if (k === 'ArrowUp') pitch = clamp(pitch + 5, -16, 16); else if (k === 'ArrowDown') pitch = clamp(pitch - 5, -16, 16);
       else return;
       e.preventDefault(); touch(); apply();
     });
+    root.addEventListener('pointerdown', function (e) { if (!e.target.closest('.tour__view') || e.target.closest('.tour__spot')) moved = 0; }, true);
     root.addEventListener('click', function (e) {
       var b = e.target.closest('[data-go]');
       if (!b || moved > 8) return;

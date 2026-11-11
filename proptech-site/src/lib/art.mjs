@@ -450,9 +450,18 @@ export function roomArt(scene = 'living', { palette, time = 'dusk', seed = 1, fl
   return `<svg class="${cls}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice" role="img" aria-label="${label || 'Иллюстрация интерьера'}">${defs(id, time)}${body}</svg>`;
 }
 
-/** Стена для демо 3D-тура: та же иллюстрация без пола, пропорции 5:3. */
-export function wallArt(scene, palette, seed, flip = false) {
-  return roomArt(scene, { palette, seed, flip, W: 500, H: 300, floor: 1, cls: 'wall-art', time: 'dusk' }).replace('role="img"', 'aria-hidden="true"').replace(/ aria-label="[^"]*"/, '').replace('xMidYMid slice', 'none');
+/** Стена для демо 3D-тура: та же иллюстрация без пола, пропорции 5:3.
+ *  Возвращает содержимое без обёртки <svg>, чтобы положить его в <symbol>. */
+export function wallParts(scene, palette, seed, flip = false) {
+  const W = 500;
+  const H = 300;
+  const h = hash(`${scene}${seed}`);
+  const p = PALETTES[palette] || PALETTES.blue;
+  const id = `${h % 9973}`;
+  const body = (SCENES[scene] || SCENES.living)(W, H, H, p, +id, 'dusk', flip);
+  // лёгкое затемнение к углам комнаты: добавляет глубину
+  const shade = `<rect width="${W}" height="${H}" fill="url(#tour-ao)"/><rect width="${W}" height="60" fill="url(#tour-ao-top)"/>`;
+  return `${defs(id, 'dusk')}${body}${shade}`;
 }
 
 export function palettePick(seed) {

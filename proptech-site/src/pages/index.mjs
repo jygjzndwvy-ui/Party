@@ -106,17 +106,15 @@ export default ({ site, objects, card }) => {
 </section>
 
 <section class="section band dark" id="tour">
-  <div class="container tour-sec">
-    <div class="tour-sec__text">
-      <p class="eyebrow" data-reveal>${T.tour.eyebrow}</p>
-      <h2 class="h2" data-split>${T.tour.title}</h2>
-      <p class="lead" data-reveal>${T.tour.text}</p>
-      <ul class="ticks" data-stagger>
+  <div class="container">
+    ${sectionHead({ eyebrow: T.tour.eyebrow, title: T.tour.title, lead: T.tour.text })}
+    <div data-reveal="clip">${tour({ demo: site.demo })}</div>
+    <div class="tour-sec__foot">
+      <ul class="ticks ticks--row" data-stagger>
         ${T.tour.points.map((p) => `<li data-reveal>${icon('check', { size: 18 })}<span>${p}</span></li>`)}
       </ul>
       ${site.demo ? `<p class="tour-sec__note" data-reveal>${icon('info', { size: 16 })}<span>${T.tour.note}</span></p>` : ''}
     </div>
-    <div class="tour-sec__view" data-reveal="clip">${tour({ demo: site.demo })}</div>
   </div>
 </section>
 

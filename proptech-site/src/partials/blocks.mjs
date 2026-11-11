@@ -1,7 +1,7 @@
 // Блоки, из которых собираются страницы. Каждый блок: функция → HTML.
 import { html, esc } from '../lib/html.mjs';
 import { icon } from '../lib/icons.mjs';
-import { wallArt, planSvg, PLANS, paletteColors } from '../lib/art.mjs';
+import { wallParts, planSvg, PLANS, paletteColors } from '../lib/art.mjs';
 
 export const arrow = (size = 20) => icon('arrow-right', { cls: 'btn__arrow', size });
 
@@ -100,38 +100,56 @@ export function sceneBg({ near = false, tags = [], t = null, seed = 7 } = {}) {
 // ── Демо 3D-тура ────────────────────────────────────────────────────────────
 // Если у объекта есть ссылка на настоящий тур (Matterport и подобные),
 // вместо демо вставляется iframe.
+// Комната собрана из плоскостей в CSS 3D. Стены нарезаны на вертикальные
+// полосы, пол и потолок на плитки: скрипт показывает только те части,
+// что находятся перед камерой, поэтому картинка не «ломается» ни в одном браузере.
 const TOUR_ROOMS = [
-  { k: 'living', name: 'Гостиная', pal: 'blue', walls: ['living', 'studio', 'hall', 'gallery'], spots: [{ face: 's', x: 50.5, y: 62, go: 'kitchen', label: 'На кухню' }, { face: 'w', x: 80, y: 60, go: 'bedroom', label: 'В спальню' }] },
+  { k: 'living', name: 'Гостиная', pal: 'blue', walls: ['living', 'studio', 'hall', 'gallery'], spots: [{ face: 's', x: 50.5, y: 62, go: 'kitchen', label: 'На кухню' }, { face: 'w', x: 22, y: 64, go: 'bedroom', label: 'В спальню' }] },
   { k: 'kitchen', name: 'Кухня', pal: 'sand', walls: ['kitchen', 'gallery', 'hall', 'studio'], spots: [{ face: 's', x: 50.5, y: 62, go: 'living', label: 'В гостиную' }] },
   { k: 'bedroom', name: 'Спальня', pal: 'sage', walls: ['bedroom', 'hall', 'gallery', 'studio'], spots: [{ face: 'e', x: 50.5, y: 62, go: 'living', label: 'В гостиную' }] },
 ];
+const TOUR_FACES = [['n', 0], ['e', -90], ['s', 180], ['w', 90]];
+const TOUR_N = 6; // на сколько частей режем каждую стену и сторону пола
 
 export function tour({ url = '', plan = 'two', cls = '', demo = true } = {}) {
   if (url) {
     return `<div class="tour tour--embed ${cls}"><iframe src="${esc(url)}" title="3D-тур по объекту" loading="lazy" allow="fullscreen; xr-spatial-tracking" allowfullscreen></iframe></div>`;
   }
   const pl = PLANS[plan] || PLANS.two;
-  const faces = ['n', 'e', 's', 'w'];
   const centers = Object.fromEntries(pl.rooms.map((r) => [r.k, [r.x + r.w / 2, r.y + r.h / 2]]));
   const mapSvg = planSvg(plan, { cls: 'plan tour__plan', labels: false }).replace(
     '</svg>',
     `<g class="tour__me"><path d="M0 0L-26 -46A52 52 0 0 1 26 -46Z"/><circle r="6"/></g></svg>`,
   );
+  const idx = Array.from({ length: TOUR_N }, (_, i) => i);
+  const sw = 500 / TOUR_N;
+  const symbols = TOUR_ROOMS.map((room, ri) =>
+    TOUR_FACES.map(([f], fi) => `<symbol id="tw-${room.k}-${f}" viewBox="0 0 500 300" preserveAspectRatio="none">${wallParts(room.walls[fi], room.pal, ri * 10 + fi, fi === 3)}</symbol>`).join(''),
+  ).join('');
   return html`
-<div class="tour ${cls}" data-tour data-centers='${JSON.stringify(centers)}'>
+<div class="tour ${cls}" data-tour data-n="${TOUR_N}" data-centers='${JSON.stringify(centers)}'>
+  <svg class="tour__defs" width="0" height="0" aria-hidden="true" focusable="false"><defs>
+    <linearGradient id="tour-ao" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#080E1A" stop-opacity=".3"/><stop offset=".14" stop-color="#080E1A" stop-opacity="0"/><stop offset=".86" stop-color="#080E1A" stop-opacity="0"/><stop offset="1" stop-color="#080E1A" stop-opacity=".3"/></linearGradient>
+    <linearGradient id="tour-ao-top" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#080E1A" stop-opacity=".18"/><stop offset="1" stop-color="#080E1A" stop-opacity="0"/></linearGradient>
+    ${symbols}
+  </defs></svg>
   <div class="tour__view" tabindex="0" role="application" aria-roledescription="3D-тур" aria-label="Демо 3D-тура. Потяните мышью или нажимайте стрелки, чтобы осмотреться" data-cursor="Тяните">
     <div class="tour__cube">
       ${TOUR_ROOMS.map((room, ri) => {
         const p = paletteColors(room.pal);
         return html`
-      <div class="tour__room${ri === 0 ? ' is-active' : ''}" data-room="${room.k}" style="--floor:${p.floor};--floor2:${p.floor2};--ceil:${p.wall};--rug:${p.accent}">
-        ${faces.map(
-          (f, fi) => html`<div class="tour__face tour__face--${f}">${wallArt(room.walls[fi], room.pal, ri * 10 + fi, fi === 3)}${room.spots
-            .filter((s) => s.face === f)
-            .map((s) => `<button class="tour__spot" type="button" data-go="${s.go}" style="left:${s.x}%;top:${s.y}%" data-nocursor><span class="tour__spot-dot"></span><span class="tour__spot-label">${s.label}</span></button>`)}</div>`,
-        )}
-        <div class="tour__face tour__face--floor"></div>
-        <div class="tour__face tour__face--ceil"></div>
+      <div class="tour__room${ri === 0 ? ' is-active' : ''}" data-room="${room.k}" style="--floor:${p.floor};--floor2:${p.floor2};--ceil:${p.wall}">
+        ${TOUR_FACES.map(([f, ry]) => idx.map((i) => `<svg class="tour__strip" data-ry="${ry}" data-i="${i}" style="--ry:${ry}deg;--i:${i}" viewBox="${+(i * sw).toFixed(3)} 0 ${+sw.toFixed(3)} 300" preserveAspectRatio="none" aria-hidden="true"><use href="#tw-${room.k}-${f}" width="500" height="300"/></svg>`).join(''))}
+        ${idx.map((j) => idx.map((i) => {
+          // затемнение к стенам: чем дальше плитка от центра комнаты, тем темнее
+          const d = Math.hypot(i - (TOUR_N - 1) / 2, j - (TOUR_N - 1) / 2) / Math.hypot((TOUR_N - 1) / 2, (TOUR_N - 1) / 2);
+          const a = (0.3 * d * d).toFixed(2);
+          return `<i class="tour__tile tour__tile--floor${(i + j) % 2 ? ' is-alt' : ''}" data-i="${i}" data-j="${j}" style="--i:${i};--j:${j};--a:${a}"></i><i class="tour__tile tour__tile--ceil" data-i="${i}" data-j="${j}" style="--i:${i};--j:${j};--a:${a}"></i>`;
+        }).join(''))}
+        ${room.spots.map((s) => {
+          const ry = TOUR_FACES.find(([f]) => f === s.face)[1];
+          return `<button class="tour__spot" type="button" data-go="${s.go}" data-ry="${ry}" data-u="${(s.x / 100 - 0.5).toFixed(3)}" data-v="${(s.y / 100 - 0.5).toFixed(3)}" style="--ry:${ry}deg;--u:${(s.x / 100 - 0.5).toFixed(3)};--v:${(s.y / 100 - 0.5).toFixed(3)}" data-nocursor><span class="tour__spot-dot"></span><span class="tour__spot-label">${s.label}</span></button>`;
+        })}
       </div>`;
       })}
     </div>
