@@ -1,3 +1,5 @@
 build/
 node_modules/
 *_Маша.pdf
+bot/node_modules/
+bot/state.json

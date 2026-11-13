@@ -1,0 +1,16 @@
+{
+  "name": "price-drop-bot",
+  "private": true,
+  "type": "module",
+  "description": "Следит за ценами в интернет-магазинах и пишет в Telegram, когда цена упала",
+  "scripts": {
+    "check": "node check.mjs",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0"
+  }
+}

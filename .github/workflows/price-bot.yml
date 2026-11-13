@@ -1,0 +1,60 @@
+name: Price bot
+
+on:
+  schedule:
+    - cron: '7,37 * * * *' # каждые 30 минут
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: price-bot
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: bot
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: bot/package-lock.json
+
+      - run: npm ci
+
+      # Браузер нужен только товарам с "render": true
+      - name: Install browser
+        run: |
+          if node -e 'const c=require("./config.json");process.exit(c.products.some(p=>p.render)?0:1)'; then
+            npm install --no-save playwright
+            npx playwright install --with-deps chromium
+          fi
+
+      # Память бота о прошлых ценах хранится в кэше Actions
+      - name: Restore price history
+        uses: actions/cache/restore@v4
+        with:
+          path: bot/state.json
+          key: price-bot-state-${{ github.run_id }}
+          restore-keys: price-bot-state-
+
+      - name: Check prices
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: node check.mjs
+
+      - name: Save price history
+        if: always() && hashFiles('bot/state.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: bot/state.json
+          key: price-bot-state-${{ github.run_id }}

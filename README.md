@@ -35,3 +35,7 @@ node src/build.mjs --only guide|kit|avito            # собрать тольк
 - `src/kit.mjs` — страницы Printable Kit
 - `src/avito.mjs` — слайды для Авито
 - `src/fonts/` — шрифты Unbounded, Nunito, Caveat, Pacifico (SIL Open Font License)
+
+## Бот для отслеживания цен
+
+В папке `bot/` лежит отдельный инструмент: следит за ценами в интернет-магазинах и пишет в Telegram, когда цена упала. Настройка описана в `bot/README.md`.
