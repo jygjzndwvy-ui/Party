@@ -385,8 +385,7 @@ def _child_size(text: str) -> tuple[str, str] | None:
 def _price(text: str, number: float | None) -> str:
     if number is not None:
         return str(int(number)) if float(number).is_integer() else f"{number:.2f}"
-    digits = re.sub(r"[^\d.,]", "", text.replace(" ", "")).strip(".,")
-    return digits or clean(text)
+    return re.sub(r"[^\d.,]", "", text.replace(" ", "")).strip(".,")     # «-», «по запросу» — цены нет
 
 
 class _SheetParser:

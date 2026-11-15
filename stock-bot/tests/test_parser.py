@@ -135,3 +135,8 @@ def test_invoice_sheet_is_not_stock(make_xlsx):
     table = parse_sheets(stock + bill)
     assert [s.name for s in table.sheets] == ["Куртки"] and [i.name for i in table.items] == ["Куртка"]
     assert len(parse_sheets(bill).items) == 2          # если других листов нет — берём что есть
+
+
+def test_dash_is_not_a_price(make_xlsx):
+    table = parse_table(make_xlsx([["Название", "S", "M", "Цена дроп"], ["Куртка", 1, 1, "-"], ["Худи", 1, 0, "2 500 ₽"]]))
+    assert [i.price for i in table.items] == ["", "2500"]

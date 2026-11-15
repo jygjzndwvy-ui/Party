@@ -167,7 +167,7 @@ Intel или Apple Silicon), Windows 10/11 или Linux.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
-.venv/bin/python -m pytest        # 83 теста: разбор таблиц, сопоставление, сценарии бота
+.venv/bin/python -m pytest        # 84 теста: разбор таблиц, сопоставление, сценарии бота
 .venv/bin/python -m stockbot      # запуск
 ```
 
