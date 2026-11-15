@@ -35,3 +35,10 @@ node src/build.mjs --only guide|kit|avito            # собрать тольк
 - `src/kit.mjs` — страницы Printable Kit
 - `src/avito.mjs` — слайды для Авито
 - `src/fonts/` — шрифты Unbounded, Nunito, Caveat, Pacifico (SIL Open Font License)
+
+---
+
+## Отдельный проект в этом репозитории
+
+`stock-bot/` — Telegram-бот, который следит за наличием размеров у поставщиков.
+К набору TROPICAL QUEST отношения не имеет; инструкция — в [`stock-bot/README.md`](stock-bot/README.md).
