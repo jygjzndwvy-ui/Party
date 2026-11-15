@@ -134,3 +134,14 @@ def test_diff_details():
     note_new = {"present": True, "avail": {"S": None}, "price": "", "raw": "S (через 3-5 дней)"}
     assert diff(note_old, note_new, opts) == ["ℹ️ Запись изменилась: «S» → «S (через 3-5 дней)»"]
     assert diff(old, old, opts) == []
+
+
+def test_only_one_bot_per_data_folder(tmp_path):
+    from stockbot.config import lock_instance
+    first = lock_instance(tmp_path)
+    assert first is not None
+    assert lock_instance(tmp_path) is None          # второй запуск в той же папке не проходит
+    first.close()
+    again = lock_instance(tmp_path)                  # после остановки первого — снова можно
+    assert again is not None
+    again.close()

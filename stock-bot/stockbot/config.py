@@ -62,6 +62,24 @@ def forget_token() -> None:
         ENV_FILE.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
 
 
+def lock_instance(data_dir: Path):
+    """Занимаем «замок» в папке данных. Второй бот с тем же ключом не нужен: Telegram отдаёт
+    сообщения только одному, и два экземпляра мешали бы друг другу. None — замок уже занят."""
+    handle = open(Path(data_dir) / "bot.lock", "a+")
+    try:
+        if os.name == "nt":
+            import msvcrt
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        handle.close()
+        return None
+    return handle
+
+
 def load() -> Config:
     env = {**_read_env_file(), **os.environ}
     token = env.get("BOT_TOKEN", "").strip() or _ask_token()

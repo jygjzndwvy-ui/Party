@@ -21,6 +21,9 @@ from .engine import Engine
 async def run() -> None:
     cfg = config.load()
     cfg.data_dir.mkdir(parents=True, exist_ok=True)
+    lock = config.lock_instance(cfg.data_dir)
+    if lock is None:
+        config.fail("Бот уже запущен в другом окне — второй запуск не нужен. Это окно можно закрыть.")
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         handlers=[logging.StreamHandler(), logging.FileHandler(cfg.data_dir / "bot.log", encoding="utf-8")])
@@ -66,6 +69,7 @@ async def run() -> None:
         await engine.close()
         await bot.session.close()
         db.close()
+        lock.close()
 
 
 def main() -> None:

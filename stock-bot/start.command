@@ -15,6 +15,8 @@ fi
 find_python() {
   local c p
   for c in python3.13 python3.12 python3.11 python3.14 python3.15 \
+      /opt/homebrew/bin/python3.13 /opt/homebrew/bin/python3.12 /opt/homebrew/bin/python3.11 \
+      /usr/local/bin/python3.13 /usr/local/bin/python3.12 /usr/local/bin/python3.11 \
       /Library/Frameworks/Python.framework/Versions/3.13/bin/python3 \
       /Library/Frameworks/Python.framework/Versions/3.12/bin/python3 \
       /Library/Frameworks/Python.framework/Versions/3.11/bin/python3 \
@@ -42,6 +44,7 @@ if ! .venv/bin/python -c 'import sys' 2>/dev/null; then
     echo "Не нашёл Python версии 3.11–3.13. Установите его:"
     echo "  1. Откройте https://www.python.org/downloads/macos/"
     echo "  2. Скачайте «macOS 64-bit universal2 installer» для Python 3.13 и установите."
+    echo "     (Если у вас есть Homebrew, проще так: brew install python@3.13)"
     echo "  3. Запустите этот файл ещё раз."
     [ "$(uname)" = "Darwin" ] && open "https://www.python.org/downloads/macos/" 2>/dev/null
     pause
