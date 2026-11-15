@@ -63,13 +63,31 @@ async def test_full_setup_flow(app, mine_rows, nord_rows):
 async def test_search_by_sizes_and_name(app, mine_rows, nord_rows):
     client, db, engine = app
     await setup(client, mine_rows, nord_rows)
-    text = plain(await client.say("пришли вещи у которых есть размеры s m l одновременно"))
-    assert "размеры S, M, L одновременно — нашёл вещей: 3" in text
-    assert "NORD" in text and "ПУХОВИК ZARA ЧЕРНЫЙ — S, M, L, XL, XXL — 5500 ₽" in text
+    recs = await client.say("пришли вещи у которых есть размеры s m l одновременно")
+    text = plain(recs)
+    # Zara чёрный и Boss синий уже есть в своей таблице — в поиске их быть не должно
+    assert "размеры S, M, L одновременно — нашёл вещей: 1" in text
+    assert "Скрыл те, что уже есть в вашей таблице: 2" in text
+    assert "ПУХОВИК MONCLER MONTBELIARD ЧЕРНЫЙ — S, M, L — 5500 ₽" in text
+    assert "ZARA" not in text and "BOSS" not in text
+    text = plain(await client.press("Показать вместе с моими"))
+    assert "нашёл вещей: 3" in text and "ПУХОВИК ZARA ЧЕРНЫЙ — S, M, L, XL, XXL — 5500 ₽ · ✅ уже у вас" in text
     assert "ПУХОВИК BOSS ЧЕРНЫЙ" not in text                             # у него нет L
+
+    text = plain(await client.say("куртки s m l"))                       # «куртки» — это и пуховики
+    assert "«куртки» · размеры S, M, L одновременно — нашёл вещей: 1" in text and "MONTBELIARD" in text
+    assert "ничего не нашёл" in plain(await client.say("кофты s m l"))
     text = plain(await client.say("boss nord"))
     assert "ПУХОВИК BOSS ЧЕРНЫЙ — S, M, XL, XXL" in text and "ZARA" not in text
     assert "ничего не нашёл" in plain(await client.say("4xl"))
+
+
+async def test_search_hides_delisted_items_too(app, mine_rows, nord_rows):
+    client, db, engine = app
+    await setup(client, mine_rows, nord_rows)
+    # «Пуховик Lacoste бежевый nord» в своей таблице продан — но он в таблице есть, значит, не новинка
+    text = plain(await client.say("lacoste"))
+    assert "новых вещей нет" in text and "(1) уже есть в вашей таблице" in text
 
 
 async def test_file_update_reports_changes(app, mine_rows, nord_rows):

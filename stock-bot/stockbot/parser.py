@@ -745,6 +745,14 @@ def parse_sheets(sheets: list[Sheet], config: dict | None = None, mine: bool = F
     if mine and any(info.has_status for info, _ in parsed):
         # В своей таблице есть лист со статусами — остальные листы (расходы, сводка) не товары.
         parsed = [(info, its) for info, its in parsed if info.has_status]
+    if not mine:
+        # У поставщика лист без размеров и без остатков (счёт, условия работы) — не наличие,
+        # если на других листах наличие есть.
+        def informative(info: SheetInfo, its: list[Item]) -> bool:
+            return info.mode != "plain" or "qty" in info.columns or any(i.has_real_sizes() for i in its)
+
+        if any(informative(info, its) for info, its in parsed):
+            parsed = [(info, its) for info, its in parsed if informative(info, its)]
     for info, its in parsed:
         infos.append(info)
         items.extend(its)

@@ -105,14 +105,34 @@ def tokens(text) -> list[str]:
     return out
 
 
+def _one_typo(a: str, b: str) -> bool:
+    """Одна опечатка: лишняя, пропущенная или заменённая буква либо две соседние переставлены."""
+    if abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) == len(b):
+        diff = [i for i in range(len(a)) if a[i] != b[i]]
+        if len(diff) == 1:
+            return True
+        return (len(diff) == 2 and diff[1] == diff[0] + 1
+                and a[diff[0]] == b[diff[1]] and a[diff[1]] == b[diff[0]])
+    if len(a) > len(b):
+        a, b = b, a
+    i = 0
+    while i < len(a) and a[i] == b[i]:
+        i += 1
+    return a[i:] == b[i + 1:]
+
+
 def same_token(a: str, b: str) -> bool:
-    """Слова совпадают точно или отличаются только окончанием."""
+    """Слова совпадают точно, отличаются только окончанием или одной опечаткой («пуховки» = «пуховик»)."""
     if a == b:
         return True
     if any(ch.isdigit() for ch in a) or any(ch.isdigit() for ch in b):
         return False
     short, long_ = (a, b) if len(a) <= len(b) else (b, a)
-    return len(short) >= 3 and len(long_) - len(short) <= 2 and long_.startswith(short)
+    if len(short) >= 3 and len(long_) - len(short) <= 2 and long_.startswith(short):
+        return True
+    return len(short) >= 5 and _one_typo(a, b)
 
 
 def index_key(token: str) -> str:

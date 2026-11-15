@@ -46,9 +46,11 @@ HELP = (
     "3. Дальше я сам проверяю таблицы и пишу, когда у поставщика по вашей вещи пропал или появился размер, "
     "вещь закончилась, изменилась цена.\n\n"
     "<b>Поиск по базе</b> — просто напишите мне:\n"
-    "• <code>s m l</code> — вещи, у которых есть все эти размеры сразу\n"
+    "• <code>куртки s m l</code> — куртки (и пуховики, ветровки, бомберы), у которых есть все эти размеры сразу\n"
+    "• <code>s m l</code> — любые вещи с такими размерами\n"
     "• <code>пуховик zara</code> — поиск по названию\n"
-    "• <code>худи xl vega</code> — худи размера XL у поставщика VEGA\n\n"
+    "• <code>худи xl vega</code> — худи размера XL у поставщика VEGA\n"
+    "Вещи, которые уже есть в вашей таблице, в поиске скрыты — показываю то, чего у вас ещё нет.\n\n"
     "Новую вещь добавлять не нужно: внесите её в свою таблицу с пометкой поставщика в конце названия — "
     "я подхвачу её при следующей проверке."
 )
@@ -213,9 +215,11 @@ async def cmd_search(m: Message, state: FSMContext):
     await state.clear()
     await m.answer(
         "Напишите, что искать по таблицам поставщиков:\n\n"
-        "• <code>s m l</code> — вещи, у которых есть все эти размеры сразу\n"
+        "• <code>куртки s m l</code> — куртки, у которых есть все эти размеры сразу\n"
+        "• <code>s m l</code> — любые вещи с такими размерами\n"
         "• <code>пуховик zara</code> — по названию\n"
-        "• <code>худи xl vega</code> — худи XL у поставщика VEGA")
+        "• <code>худи xl vega</code> — худи XL у поставщика VEGA\n\n"
+        "Вещи, которые уже есть в вашей таблице, не показываю.")
 
 
 @router.message(Command("tables"))
@@ -796,14 +800,10 @@ async def cb_relink(c: CallbackQuery, engine: Engine, db: DB):
 
 
 # ── поиск по базе поставщиков ───────────────────────────────────────────────
-@router.message(F.text, ~F.text.startswith("/"))
-async def on_text(m: Message, state: FSMContext, db: DB):
-    await state.clear()
+def search_view(db: DB, engine: Engine, text: str, show_owned: bool) -> tuple[str, InlineKeyboardMarkup | None]:
+    """Ответ на поисковый запрос. По умолчанию прячем вещи, которые уже есть в своей таблице."""
     suppliers = db.sources("supplier")
-    if not suppliers:
-        await m.answer("Пока искать негде: пришлите ссылку на вашу таблицу, а затем на таблицы поставщиков.")
-        return
-    sizes, rest = parse_query(m.text)
+    sizes, rest = parse_query(text)
     only = None
     for s in suppliers:                        # «худи xl vega» — ищем только у VEGA
         for tag in (s.tags or []) + [s.name]:
@@ -814,33 +814,64 @@ async def on_text(m: Message, state: FSMContext, db: DB):
         if only:
             break
     if not sizes and not rest:
-        await m.answer("Напишите размеры или название, например: <code>s m l</code> или <code>пуховик zara</code>.")
-        return
-    total, blocks = 0, []
+        return ("Напишите размеры или название, например: <code>куртки s m l</code> "
+                "или <code>пуховик zara</code>."), None
+    owned = engine.owned()
+    total, hidden, blocks = 0, 0, []
     for s in ([only] if only else suppliers):
         found = search(db.snapshot(s.id), sizes, rest)
         if sizes or not rest:
             found = [i for i in found if i.available()]
+        mine_keys = owned.get(s.id, set())
+        if not show_owned:
+            hidden += sum(1 for i in found if i.key in mine_keys)
+            found = [i for i in found if i.key not in mine_keys]
         if not found:
             continue
         total += len(found)
         lines = [f"<b>{escape(s.name)}</b>"]
         for item in found[:60]:
             price = f" — {escape(item.price)} ₽" if item.price else ""
-            lines.append(f"• {escape(item.title)} — {escape(sizes_text(item))}{price}")
+            mark = " · ✅ уже у вас" if item.key in mine_keys else ""
+            lines.append(f"• {escape(item.title)} — {escape(sizes_text(item))}{price}{mark}")
         if len(found) > 60:
             lines.append(f"…и ещё {len(found) - 60}. Уточните запрос, чтобы увидеть остальные.")
         blocks.append("\n".join(lines))
     what = []
-    if sizes:
-        what.append("размеры " + ", ".join(sizes) + (" одновременно" if len(sizes) > 1 else ""))
     if rest:
         what.append("«" + " ".join(rest) + "»")
-    title = " · ".join(what) + (f" · только {only.name}" if only else "")
+    if sizes:
+        what.append("размеры " + ", ".join(sizes) + (" одновременно" if len(sizes) > 1 else ""))
+    title = escape(" · ".join(what) + (f" · только {only.name}" if only else ""))
+    markup = kb([(f"Показать вместе с моими ({hidden})", "srch:all")]) if hidden else None
+    note = f"\nСкрыл те, что уже есть в вашей таблице: {hidden}." if hidden else ""
     if not blocks:
-        await m.answer(f"🔎 {escape(title)}: ничего не нашёл.")
+        if hidden:
+            return f"🔎 {title}: новых вещей нет — все подходящие ({hidden}) уже есть в вашей таблице.", markup
+        return f"🔎 {title}: ничего не нашёл.", None
+    return f"🔎 {title} — нашёл вещей: {total}{note}\n\n" + "\n\n".join(blocks), markup
+
+
+@router.message(F.text, ~F.text.startswith("/"))
+async def on_text(m: Message, state: FSMContext, db: DB, engine: Engine):
+    await state.clear()
+    if not db.sources("supplier"):
+        await m.answer("Пока искать негде: пришлите ссылку на вашу таблицу, а затем на таблицы поставщиков.")
         return
-    await send(m.bot, m.chat.id, f"🔎 {escape(title)} — нашёл вещей: {total}\n\n" + "\n\n".join(blocks))
+    db.set("last_search", m.text)
+    text, markup = search_view(db, engine, m.text, show_owned=False)
+    await send(m.bot, m.chat.id, text, markup)
+
+
+@router.callback_query(F.data == "srch:all")
+async def cb_search_all(c: CallbackQuery, db: DB, engine: Engine):
+    query = db.get("last_search")
+    if not query:
+        await c.answer("Напишите запрос ещё раз", show_alert=True)
+        return
+    text, markup = search_view(db, engine, query, show_owned=True)
+    await c.answer()
+    await send(c.bot, c.message.chat.id, text, markup)
 
 
 @router.errors()

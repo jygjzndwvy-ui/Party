@@ -52,3 +52,20 @@ def test_query_and_search():
     assert [i.name for i in search(base, ["S", "M", "L"], [])] == ["Пуховик Zara", "Худи Zara"]
     assert [i.name for i in search(base, ["S", "M", "L"], ["пуховики"])] == ["Пуховик Zara"]
     assert [i.name for i in search(base, [], ["zara"])] == ["Пуховик Zara", "Худи Zara"]
+
+
+def test_category_words_and_typos():
+    from stockbot.textnorm import same_token
+    assert same_token("puhovk", "puhovik") and same_token("raplh", "ralph")     # одна опечатка
+    assert not same_token("zara", "zaza") and not same_token("black", "blocks")
+    base = [Item(sheet="Одежда", name="Пуховки Canada Goose", sizes={"S": 1, "M": 1, "L": 1}),
+            Item(sheet="Одежда", name="Бомбер Alpha", sizes={"S": 1, "M": 1, "L": 1}),
+            Item(sheet="1.Куртки/Пуховики", name="Stone Island Camo", sizes={"S": 1, "M": 1, "L": 1}),
+            Item(sheet="Одежда", name="Худи Stone Island", sizes={"S": 1, "M": 1, "L": 1}),
+            Item(sheet="Одежда", name="Штаны Nike", sizes={"S": 1, "M": 1, "L": 1})]
+    names = lambda q: [i.name for i in search(base, ["S", "M", "L"], q)]
+    assert names(["куртки"]) == ["Пуховки Canada Goose", "Бомбер Alpha", "Stone Island Camo"]
+    assert names(["куртка", "stone"]) == ["Stone Island Camo"]            # категория — из названия листа
+    assert names(["пуховик"]) == ["Пуховки Canada Goose", "Stone Island Camo"]
+    assert names(["кофты"]) == ["Худи Stone Island"]
+    assert names(["штаны"]) == ["Штаны Nike"]

@@ -317,6 +317,37 @@ class Engine:
     def dismiss(self, link: Link) -> None:
         self.db.update_link(link.id, status="none", sup_key="", sup_name="", state={}, candidates=[])
 
+    def owned(self) -> dict[int, set[str]]:
+        """Вещи поставщиков, которые уже есть в своей таблице (в любом статусе) — по каждому поставщику.
+
+        Нужно поиску: показывать только то, чего у владельца ещё нет."""
+        db = self.db
+        suppliers = db.sources("supplier")
+        out: dict[int, set[str]] = {s.id: set() for s in suppliers}
+        decided: set[str] = set()
+        for link in db.links():
+            if link.status in ("auto", "manual") and link.source_id in out:
+                out[link.source_id].add(link.sup_key)
+            if link.status != "ask":
+                decided.add(link.my_key)
+        mine_src = db.mine()
+        if mine_src is None:
+            return out
+        tags = {s.id: (s.tags or [s.name]) for s in suppliers}
+        snaps: dict[int, list[Item]] = {}
+        for item in db.snapshot(mine_src.id):       # снятые и проданные тоже «уже есть в таблице»
+            if item.key in decided:
+                continue
+            source_id, bare = split_tag(item.name, tags)
+            if source_id is None:
+                continue
+            if source_id not in snaps:
+                snaps[source_id] = db.snapshot(source_id)
+            hit = decide(rank(bare, snaps[source_id]))
+            if hit is not None:
+                out[source_id].add(hit.key)
+        return out
+
     def overview(self) -> dict:
         """Сводка для экрана «Мои вещи»."""
         db = self.db

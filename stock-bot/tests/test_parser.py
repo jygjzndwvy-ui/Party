@@ -126,3 +126,12 @@ def test_index_page():
     page = ('<title>VEGA НАЛИЧИЕ - Google Drive</title> items.push({name: "ветровки\\/куртки", pageUrl: '
             '"https:\\/\\/docs.google.com\\/x\\/sheet?headers\\x3dtrue&gid=734174550", gid: "734174550",});')
     assert parse_index(page) == ("VEGA НАЛИЧИЕ", [("ветровки/куртки", "734174550")])
+
+
+def test_invoice_sheet_is_not_stock(make_xlsx):
+    from stockbot.workbook import load_sheets
+    stock = load_sheets(make_xlsx([["Название", "S", "M"], ["Куртка", 1, 0]], title="Куртки"))
+    bill = load_sheets(make_xlsx([["Наименование", "Цена"], ["Куртка Moncler", 5000], ["Доставка", 300]], title="Счет"))
+    table = parse_sheets(stock + bill)
+    assert [s.name for s in table.sheets] == ["Куртки"] and [i.name for i in table.items] == ["Куртка"]
+    assert len(parse_sheets(bill).items) == 2          # если других листов нет — берём что есть

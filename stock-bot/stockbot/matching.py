@@ -178,16 +178,44 @@ def parse_query(text: str) -> tuple[list[str], list[str]]:
     return sizes, rest
 
 
+# Общие слова в запросе раскрываем: «куртки» — это и пуховики, и ветровки, и бомберы.
+_GROUPS = {
+    "куртка": ["куртка", "пуховик", "микропуховик", "парка", "бомбер", "аляска", "ветровка", "анорак",
+               "джинсовка", "верхняя"],
+    "кофта": ["кофта", "худи", "свитер", "свитшот", "толстовка", "зипка", "зип", "лонгслив", "кардиган",
+              "полузамок", "джемпер"],
+    "штаны": ["штаны", "брюки", "джинсы", "карго"],
+    "обувь": ["обувь", "кроссовки", "кеды", "ботинки"],
+}
+_UMBRELLA = {canon_token(k): [canon_token(w) for w in v] for k, v in _GROUPS.items()}
+
+
+def expand(word: str) -> list[str]:
+    """Слово запроса → варианты, которые ему подходят (в каноническом виде)."""
+    canon = canon_token(word)
+    for key, variants in _UMBRELLA.items():
+        if same_token(canon, key):
+            return variants
+    return [canon]
+
+
 def search(items: list[Item], sizes: list[str], query_words: list[str]) -> list[Item]:
-    """Товары, у которых есть ВСЕ указанные размеры и в названии есть все слова."""
-    want = [canon_token(w) for w in query_words]
+    """Товары, у которых есть ВСЕ указанные размеры и которые подходят под все слова запроса.
+
+    Слово ищем в названии вещи и в названии листа: у поставщиков листы — это категории
+    («Куртки/Пуховики», «Обувь»), и вещь с листа курток — куртка, даже если в названии только бренд."""
+    want = [expand(w) for w in query_words]
     found = []
+    sheet_cache: dict[str, list[str]] = {}
     for item in items:
         if any(not (s in item.sizes and is_available(item.sizes[s])) for s in sizes):
             continue
         if want:
-            toks = name_tokens(item.title + " " + item.article)
-            if not all(any(same_token(w, t) or t.startswith(w) for t in toks) for w in want):
+            if item.sheet not in sheet_cache:
+                sheet_cache[item.sheet] = name_tokens(item.sheet)
+            toks = name_tokens(item.title + " " + item.article) + sheet_cache[item.sheet]
+            if not all(any(same_token(v, t) or t.startswith(v) for v in variants for t in toks)
+                       for variants in want):
                 continue
         found.append(item)
     return found
