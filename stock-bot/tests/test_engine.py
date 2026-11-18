@@ -145,3 +145,35 @@ def test_only_one_bot_per_data_folder(tmp_path):
     again = lock_instance(tmp_path)                  # после остановки первого — снова можно
     assert again is not None
     again.close()
+
+
+async def test_stock_report(world, nord_rows):
+    db, engine, mine, sup, write = world
+    await engine.cycle()
+    r = engine.stock_report()
+    assert (r["active"], r["ok"], r["missing"]) == (6, 2, [])
+    assert [name for _src, name in r["unsure"]] == ["Пуховик Moncler nord"]
+    assert sorted(r["untagged"]) == ["Пуховик Champion белый VEGA", "Худи Stone Island LUX", "Худи Vetements LUX"]
+
+    for row in nord_rows[3:]:
+        row[2] = "-"
+    del nord_rows[3]
+    write(sup, nord_rows)
+    await engine.cycle()
+    reasons = {name: why for _src, name, why in engine.stock_report()["missing"]}
+    assert reasons == {"Пуховик Zara черный nord": "пропала из таблицы поставщика",
+                       "Пуховик Hugo Boss синий nord": "закончилась у поставщика",
+                       "Пуховик Moncler nord": "все похожие вещи у поставщика закончились"}
+
+    engine.dismiss(db.links(status="ask")[0])
+    reasons = {name: why for _src, name, why in engine.stock_report()["missing"]}
+    assert reasons["Пуховик Moncler nord"] == "вы отметили «нет у поставщика»"
+
+
+async def test_stock_report_marks_broken_table(world, nord_rows):
+    db, engine, mine, sup, write = world
+    await engine.cycle()
+    engine.file_path(sup.id).write_bytes(b"PK\x03\x04 broken")
+    await engine.cycle()
+    r = engine.stock_report()
+    assert [s.name for s in r["stale"]] == ["NORD"] and r["ok"] == 2     # по старым данным, с пометкой

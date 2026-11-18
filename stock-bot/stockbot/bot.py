@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import re
 import time
 from datetime import datetime
 from html import escape
@@ -27,13 +28,16 @@ log = logging.getLogger("stockbot.bot")
 router = Router()
 
 B_ITEMS, B_SEARCH, B_TABLES, B_CHECK, B_SETTINGS, B_HELP = (
-    "📦 Мои вещи", "🔎 Поиск по базе", "📊 Таблицы", "🔄 Проверить сейчас", "⚙️ Настройки", "❓ Помощь")
+    "📦 Мои вещи", "🔎 Поиск по базе", "📊 Таблицы", "📋 Проверить наличие", "⚙️ Настройки", "❓ Помощь")
+OLD_CHECK = "🔄 Проверить сейчас"      # кнопка из прошлой версии: у владельца она ещё может висеть в меню
 MENU = ReplyKeyboardMarkup(resize_keyboard=True, keyboard=[
     [KeyboardButton(text=B_ITEMS), KeyboardButton(text=B_SEARCH)],
     [KeyboardButton(text=B_TABLES), KeyboardButton(text=B_CHECK)],
     [KeyboardButton(text=B_SETTINGS), KeyboardButton(text=B_HELP)],
 ])
-MENU_TEXTS = {B_ITEMS, B_SEARCH, B_TABLES, B_CHECK, B_SETTINGS, B_HELP}
+MENU_TEXTS = {B_ITEMS, B_SEARCH, B_TABLES, B_CHECK, OLD_CHECK, B_SETTINGS, B_HELP}
+# «проверь наличие», «что снять с авито», «каких вещей нет у поставщиков» — просьба об отчёте, а не поиск
+REPORT_WORDS = re.compile(r"провер|нет в наличии|нету|нет у постав|закончил|снять|снимать|убрать|отсутству", re.I)
 NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
 LIMIT = 3800
 
@@ -51,6 +55,8 @@ HELP = (
     "• <code>пуховик zara</code> — поиск по названию\n"
     "• <code>худи xl vega</code> — худи размера XL у поставщика VEGA\n"
     "Вещи, которые уже есть в вашей таблице, в поиске скрыты — показываю то, чего у вас ещё нет.\n\n"
+    "<b>Проверить наличие</b> — кнопка внизу или напишите «проверь наличие». Пришлю список ваших "
+    "выставленных вещей, которых нет у поставщиков, чтобы вы сняли их с Авито.\n\n"
     "Новую вещь добавлять не нужно: внесите её в свою таблицу с пометкой поставщика в конце названия — "
     "я подхвачу её при следующей проверке."
 )
@@ -160,20 +166,56 @@ async def cmd_help(m: Message, state: FSMContext):
 
 
 @router.message(Command("check"))
-@router.message(F.text == B_CHECK)
-async def cmd_check(m: Message, state: FSMContext, engine: Engine, db: DB):
+@router.message(F.text.in_({B_CHECK, OLD_CHECK}))
+async def cmd_check(m: Message, state: FSMContext, engine: Engine, db: DB, tz: ZoneInfo):
     await state.clear()
     if db.mine() is None:
         await m.answer("Сначала пришлите ссылку на вашу таблицу с вещами.")
         return
-    wait = await m.answer("⏳ Проверяю таблицы…")
+    if m.text == OLD_CHECK:
+        await m.answer("Обновил кнопки меню.", reply_markup=MENU)
+    wait = await m.answer("⏳ Перечитываю таблицы и проверяю наличие…")
     notices = await engine.cycle(manual=True)
     await wait.delete()
-    if notices:
-        await deliver(m.bot, m.chat.id, notices)
+    # «не уверен насчёт вещей» не шлём отдельно — эти вещи есть в отчёте, и под ним та же кнопка
+    await deliver(m.bot, m.chat.id, [n for n in notices if not n.review])
+    text, markup = report_view(engine, tz)
+    await send(m.bot, m.chat.id, text, markup)
+
+
+def report_view(engine: Engine, tz: ZoneInfo) -> tuple[str, InlineKeyboardMarkup | None]:
+    """Отчёт «Проверить наличие»: какие выставленные вещи пора снять с Авито."""
+    r = engine.stock_report()
+    lines = [f"📋 <b>Проверка наличия</b> · выставлено вещей: {r['active']}"]
+    if r["missing"]:
+        lines.append(f"\n🚫 <b>Нет у поставщика — снимите с Авито: {len(r['missing'])}</b>")
+        groups: dict[int, list] = {}
+        for src, name, why in r["missing"]:
+            groups.setdefault(src.id, []).append((src, name, why))
+        for rows in groups.values():
+            lines.append(f"\n<b>{escape(rows[0][0].name)}</b>")
+            lines += [f"• {escape(name)} — {escape(why)}" for _src, name, why in rows]
     else:
-        n = len(db.sources("supplier"))
-        await m.answer(f"✅ Изменений нет. Проверил таблиц поставщиков: {n}.")
+        lines.append("\n✅ Вещей, которых нет у поставщиков, не нашёл.")
+    if r["unsure"]:
+        lines.append(f"\n❓ <b>Не уверен, какая это вещь у поставщика: {len(r['unsure'])}</b>\n"
+                     "Нажмите «Разобрать» — после этого проверю и их.")
+        lines += [f"• {escape(name)} · {escape(src.name)}" for src, name in r["unsure"]]
+    if r["unchecked"]:
+        lines.append(f"\n⚠️ <b>Не проверил — таблица поставщика не открылась: {len(r['unchecked'])}</b>")
+        lines += [f"• {escape(name)} · {escape(src.name)}" for src, name in r["unchecked"]]
+    for src in r["stale"]:
+        lines.append(f"\n⚠️ Таблица «{escape(src.name)}» сейчас не открывается ({escape(src.last_error)}). "
+                     f"По ней данные на {_when(src.checked_at, tz)}.")
+    if r["untagged"]:
+        lines.append(f"\n⚪️ <b>Не проверял — нет таблицы поставщика: {len(r['untagged'])}</b>")
+        stats = ", ".join(f"{t} — {n}" for t, n in r["untagged_tags"][:12])
+        if stats:
+            lines.append(f"Пометки в названиях: {escape(stats)}")
+        lines.append("Пришлите мне таблицы этих поставщиков — буду проверять и их.")
+    lines.append(f"\n✅ Есть у поставщиков: {r['ok']}")
+    markup = kb([(f"❓ Разобрать ({len(r['unsure'])})", "rev")]) if r["unsure"] else None
+    return "\n".join(lines), markup
 
 
 @router.message(Command("items"))
@@ -853,8 +895,11 @@ def search_view(db: DB, engine: Engine, text: str, show_owned: bool) -> tuple[st
 
 
 @router.message(F.text, ~F.text.startswith("/"))
-async def on_text(m: Message, state: FSMContext, db: DB, engine: Engine):
+async def on_text(m: Message, state: FSMContext, db: DB, engine: Engine, tz: ZoneInfo):
     await state.clear()
+    if REPORT_WORDS.search(m.text) and not parse_query(m.text)[0]:
+        await cmd_check(m, state, engine, db, tz)
+        return
     if not db.sources("supplier"):
         await m.answer("Пока искать негде: пришлите ссылку на вашу таблицу, а затем на таблицы поставщиков.")
         return

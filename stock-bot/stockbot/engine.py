@@ -317,6 +317,54 @@ class Engine:
     def dismiss(self, link: Link) -> None:
         self.db.update_link(link.id, status="none", sup_key="", sup_name="", state={}, candidates=[])
 
+    def stock_report(self) -> dict:
+        """Есть ли у поставщиков вещи, выставленные в своей таблице (по последней проверке).
+
+        missing   — (поставщик, вещь, причина): у поставщика её нет, объявление пора снимать;
+        unsure    — (поставщик, вещь): пара не выбрана, а похожие вещи у поставщика есть;
+        unchecked — (поставщик, вещь): таблица поставщика ещё ни разу не открылась;
+        untagged  — вещи без пометки известного поставщика: проверять не с чем."""
+        db = self.db
+        report: dict = {"active": 0, "ok": 0, "missing": [], "unsure": [], "unchecked": [],
+                        "untagged": [], "untagged_tags": [], "stale": []}
+        mine_src = db.mine()
+        if mine_src is None:
+            return report
+        suppliers = {s.id: s for s in db.sources("supplier")}
+        tags = {sid: (s.tags or [s.name]) for sid, s in suppliers.items()}
+        report["stale"] = [s for s in suppliers.values() if s.last_error]
+        for item in db.snapshot(mine_src.id):
+            if not is_active(item):
+                continue
+            report["active"] += 1
+            source_id, _bare = split_tag(item.name, tags)
+            if source_id is None:
+                report["untagged"].append(item.name)
+                continue
+            src = suppliers[source_id]
+            link = db.link_by_key(item.key)
+            if link is None or link.source_id != source_id:
+                report["unchecked"].append((src, item.name))
+            elif link.status == "none":
+                report["missing"].append((src, item.name, "вы отметили «нет у поставщика»"))
+            elif link.status in ("auto", "manual"):
+                if not link.state.get("present"):
+                    report["missing"].append((src, item.name, "пропала из таблицы поставщика"))
+                elif not link.state.get("avail"):
+                    report["missing"].append((src, item.name, "закончилась у поставщика"))
+                else:
+                    report["ok"] += 1
+            else:
+                cands = self.candidates(link)
+                if not cands:
+                    report["missing"].append((src, item.name, "не нашёл у поставщика похожих вещей"))
+                elif not any(c.available() for c in cands):
+                    report["missing"].append((src, item.name, "все похожие вещи у поставщика закончились"))
+                else:
+                    report["unsure"].append((src, item.name))
+        report["untagged_tags"] = tag_stats(report["untagged"])
+        return report
+
     def owned(self) -> dict[int, set[str]]:
         """Вещи поставщиков, которые уже есть в своей таблице (в любом статусе) — по каждому поставщику.
 

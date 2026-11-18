@@ -99,7 +99,8 @@ async def test_file_update_reports_changes(app, mine_rows, nord_rows):
     text = plain(recs)
     assert "Пуховик Zara черный nord" in text and "➖ Убрали: S, M, L, XXL" in text
     assert "⚠️ Остался только размер XL" in text
-    assert "Изменений нет" in plain(await client.say("🔄 Проверить сейчас"))
+    text = plain(await client.say("📋 Проверить наличие"))
+    assert "Проверка наличия" in text and "изменения" not in text            # изменения уже были присланы
 
 
 async def test_screens(app, mine_rows, nord_rows):
@@ -176,3 +177,40 @@ def test_long_messages_are_split():
     parts = chunks(text)
     assert len(parts) > 1 and all(len(p) <= 3800 for p in parts)
     assert "\n".join(parts) == text
+
+
+async def test_availability_report(app, mine_rows, nord_rows):
+    client, db, engine = app
+    await setup(client, mine_rows, nord_rows)
+    recs = await client.say("📋 Проверить наличие")
+    text = plain(recs)
+    assert "выставлено вещей: 6" in text
+    assert "Вещей, которых нет у поставщиков, не нашёл" in text
+    assert "Не уверен, какая это вещь у поставщика: 1" in text and "• Пуховик Moncler nord · NORD" in text
+    assert "Не проверял — нет таблицы поставщика: 3" in text and "lux — 2" in text
+    assert "Есть у поставщиков: 2" in text
+    assert client.buttons()[0][0] == "❓ Разобрать (1)"
+
+    sup = db.sources("supplier")[0]
+    for row in nord_rows[3:]:
+        row[2] = "-"                                   # у поставщика всё закончилось…
+    del nord_rows[3]                                   # …а «ПУХОВИК ZARA ЧЕРНЫЙ» убрали из таблицы
+    engine.file_path(sup.id).write_bytes(xlsx(nord_rows))
+    recs = await client.say("проверь наличие")        # можно и словами
+    text = plain(recs)
+    assert "🔔 NORD — изменения" in text                # обычное уведомление об изменениях тоже приходит
+    assert "Нет у поставщика — снимите с Авито: 3" in text
+    assert "• Пуховик Zara черный nord — пропала из таблицы поставщика" in text
+    assert "• Пуховик Hugo Boss синий nord — закончилась у поставщика" in text
+    assert "• Пуховик Moncler nord — все похожие вещи у поставщика закончились" in text
+    assert "Есть у поставщиков: 0" in text
+    assert "Не уверен насчёт вещей" not in text         # отдельного напоминания о разборе нет
+
+
+async def test_old_check_button_still_works(app, mine_rows, nord_rows):
+    client, db, engine = app
+    await setup(client, mine_rows, nord_rows)
+    recs = await client.say("🔄 Проверить сейчас")
+    assert recs[0]["text"] == "Обновил кнопки меню." and recs[0]["markup"].keyboard[1][1].text == "📋 Проверить наличие"
+    assert "Проверка наличия" in plain(recs)
+    assert "нашёл вещей" in plain(await client.say("пуховик"))   # обычный поиск словами не превращается в отчёт
