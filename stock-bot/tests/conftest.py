@@ -28,14 +28,17 @@ def xlsx(rows, merges=(), strike=(), title="Лист1") -> bytes:
 
 def gsheet_html(rows) -> str:
     """Страница листа в том виде, как её отдаёт Google (htmlview). Ячейка — строка
-    или кортеж (текст, colspan, rowspan)."""
+    или кортеж (текст, colspan, rowspan[, гиперссылка])."""
     out = ['<style>.ritz .waffle .s9{text-decoration:line-through;}</style><table class="waffle"><thead><tr>'
            '<th class="row-header freezebar-origin-ltr"></th><th>A</th></tr></thead><tbody>']
     for n, row in enumerate(rows, 1):
         out.append(f'<tr style="height: 20px"><th id="0R{n - 1}" class="row-headers-background"><div>{n}</div></th>')
         for cell in row:
-            text, cs, rs = cell if isinstance(cell, tuple) else (cell, 1, 1)
+            text, cs, rs, href = (cell + ("",))[:4] if isinstance(cell, tuple) else (cell, 1, 1, "")
             attrs = (f' colspan="{cs}"' if cs > 1 else "") + (f' rowspan="{rs}"' if rs > 1 else "")
+            if href:       # Google заворачивает ссылки в свой адрес перехода
+                text = (f'<a target="_blank" href="https://www.google.com/url?q={href}&amp;sa=D&amp;'
+                        f'source=editors&amp;ust=1&amp;usg=x">{text}</a>')
             out.append(f'<td class="s1"{attrs}>{text}</td>')
         out.append("</tr>")
         if n == 2:      # закреплённые строки: Google вставляет служебную строку-разделитель
@@ -71,7 +74,7 @@ NORD_ROWS = [
     ["НАЛИЧИЕ NORD_DROP"],
     [],
     ["Наименование", "Фото", "Размеры", "Цена"],
-    ["ПУХОВИК ZARA ЧЕРНЫЙ", "", "S M L XL XXL (через 3-5 дней)", "5500р"],
+    ["ПУХОВИК ZARA ЧЕРНЫЙ", "", "S M L XL XXL", "5500р"],
     ["ПУХОВИК ZARA СИНИЙ", "", "L XL XXL", "5500р"],
     ["ПУХОВИК BOSS СИНИЙ", "", "S M L XL XXL", "4500р"],
     ["ПУХОВИК BOSS ЧЕРНЫЙ", "", "S M XL XXL", "4500р"],

@@ -1,6 +1,6 @@
 import pytest
 
-from stockbot.sizes import AMBIG, parse_size, parse_size_list, parse_stock, sort_sizes
+from stockbot.sizes import AMBIG, parse_size, parse_size_list, parse_stock, pending_note, sort_sizes
 
 
 @pytest.mark.parametrize("text,expected", [
@@ -48,3 +48,16 @@ def test_stock_number_and_echo():
 
 def test_sort_sizes():
     assert sort_sizes(["XL", "S", "46", "M", "42"]) == ["S", "M", "XL", "42", "46"]
+
+
+@pytest.mark.parametrize("text", [
+    "Поставка ~ 29.11", "поставка 25.11", "Догруз в пути", "в пути", "возврат (до 25 нояб)", "через 3-5 дней",
+    "предзаказ", "под заказ", "ожидается", "Ждём", "29.11", "1.12", "03.12", "29.11.26", "с 1 дек", "резерв",
+])
+def test_pending_notes(text):
+    assert pending_note(text) == text
+
+
+@pytest.mark.parametrize("text", ["", "✅ 1 шт", "❌", "-", "много", "есть", "3", "нет", "S M L", "Поставщик", "2.5", "1.5", "42.5"])
+def test_not_pending(text):
+    assert pending_note(text) == ""

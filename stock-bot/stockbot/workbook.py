@@ -33,6 +33,8 @@ class Sheet:
     hmerge: dict[tuple[int, int], int] = field(default_factory=dict)
     # Ячейки, заполненные из объединения по вертикали (это не отдельные строки таблицы).
     vfill: set[tuple[int, int]] = field(default_factory=set)
+    # Гиперссылки ячеек: текст «Пост» или «Фото», а за ним ссылка.
+    links: dict[tuple[int, int], str] = field(default_factory=dict)
 
     def cell(self, r: int, c: int | None) -> str:
         if c is None or r < 0 or r >= len(self.rows):
@@ -162,6 +164,9 @@ def _load_xlsx(data: bytes) -> list[Sheet]:
             grid.setdefault(r, {})[c] = text
             if live is not None and live != text:
                 sheet.live[(r, c)] = live
+            target = getattr(getattr(cell, "hyperlink", None), "target", None)
+            if target and str(target).startswith(("http://", "https://")):
+                sheet.links[(r, c)] = str(target)
 
         # Объединённые по вертикали ячейки: значение действует на все строки объединения.
         try:

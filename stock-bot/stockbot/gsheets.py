@@ -8,6 +8,7 @@ from __future__ import annotations
 import html as html_mod
 import re
 from html.parser import HTMLParser
+from urllib.parse import parse_qs, urlparse
 
 from .textnorm import clean
 from .workbook import MAX_COLS, MAX_ROWS, Sheet
@@ -24,6 +25,15 @@ _INLINE = {"span", "s", "strike", "del", "a", "div", "b", "i", "u", "font", "p",
 def doc_id(url: str) -> str | None:
     m = DOC_ID.search(url or "")
     return m.group(1) if m else None
+
+
+def unwrap_link(href: str) -> str:
+    """Ссылка из ячейки: Google заворачивает её в google.com/url?q=… — достаём настоящую."""
+    href = html_mod.unescape(href or "").strip()
+    if re.match(r"https?://(?:www\.)?google\.[a-z.]+/url\?", href):
+        q = parse_qs(urlparse(href).query).get("q")
+        href = q[0] if q else ""
+    return href if href.startswith(("http://", "https://")) else ""
 
 
 def _js_unescape(s: str) -> str:
@@ -88,6 +98,8 @@ class _Table(HTMLParser):
                          "struck": self._is_struck("td", a)}
             self.stack = []
         elif self.cell is not None:
+            if tag == "a" and not self.cell.get("href"):
+                self.cell["href"] = unwrap_link(a.get("href") or "")
             if tag == "br":
                 self.cell["full"].append("\n")
                 self.cell["live"].append("\n")
@@ -137,10 +149,12 @@ def parse_sheet_html(page: str, name: str) -> Sheet:
     occupied: set[tuple[int, int]] = set()
     nums = {i: row["num"] for i, row in enumerate(parser.rows)}
 
-    def put(r: int, c: int, text: str, live: str) -> None:
+    def put(r: int, c: int, text: str, live: str, href: str) -> None:
         grid.setdefault(r, {})[c] = text
         if live != text:
             sheet.live[(r, c)] = live
+        if href:
+            sheet.links[(r, c)] = href
         if _NUMERIC.fullmatch(text):
             sheet.nums[(r, c)] = float(text.replace(",", "."))
 
@@ -158,13 +172,14 @@ def parse_sheet_html(page: str, name: str) -> Sheet:
             live = clean("".join(cell["live"]))
             if nums[i] is not None and text and col < MAX_COLS and nums[i] <= MAX_ROWS:
                 r = nums[i] - 1
-                put(r, col, text, live)
+                href = cell.get("href", "")
+                put(r, col, text, live, href)
                 for di in range(rs):
                     rr = nums.get(i + di)
                     if rr is None or rr > MAX_ROWS:
                         continue
                     if di:
-                        put(rr - 1, col, text, live)      # объединение по вертикали
+                        put(rr - 1, col, text, live, href)      # объединение по вертикали
                         sheet.vfill.add((rr - 1, col))
                     for dc in range(1, cs):
                         sheet.hmerge[(rr - 1, col + dc)] = col

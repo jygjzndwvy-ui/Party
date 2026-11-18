@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import asdict, dataclass, field
+from html import escape
 
 from .sizes import (AMBIG, NOSIZE, is_available, is_letter, loose_tokens, merge_stock, parse_marker,
-                    parse_size, parse_size_list, parse_stock, sort_sizes)
+                    parse_size, parse_size_list, parse_stock, pending_note, sort_sizes)
 from .textnorm import clean, norm, norm_article
 from .workbook import Sheet, TableError, load_sheets
 
@@ -35,6 +36,7 @@ class Item:
     sizes: dict[str, int | None] = field(default_factory=dict)   # 0 — нет, None — есть, N — штук
     row: int = 0
     dups: int = 0                           # сколько ещё строк с таким же названием слилось в эту
+    soon: dict[str, str] = field(default_factory=dict)   # размеры, которых пока нет: размер → «Поставка ~ 29.11»
 
     @property
     def key(self) -> str:
@@ -103,6 +105,7 @@ class ParsedTable:
 ROLE_TITLES = {
     "name": "название", "article": "артикул", "color": "цвет", "price": "цена",
     "qty": "количество", "size": "размеры", "brand": "бренд", "status": "статус", "kind": "тип",
+    "note": "примечание",
 }
 MODE_TITLES = {
     "wide": "размеры в столбцах",
@@ -113,8 +116,9 @@ MODE_TITLES = {
 # Порядок важен: «Размеры в наличии» — это размеры, «Цена за шт» — цена.
 _ROLE_PATTERNS = [
     ("link", r"^(ссылк|link|url)"),
+    ("note", r"^(примечани|комментари|заметк|поставка|поставки$|ожидани|статус постав)"),
     ("skip", r"^(№|n$|no$|#|п/п|п\.п|фото|photo|image|изображени|картинк|итого|всего|сумма"
-             r"|примечани|комментари|состав|материал|ткань|упаков|в упаковке|в коробке|вес\b|объем|страна"
+             r"|состав|материал|ткань|упаков|в упаковке|в коробке|вес\b|объем|страна"
              r"|производител|категори|раздел|пол$|сезон|дата|штрих|barcode|ean|кратност|в ряду|ряд$"
              r"|выставлен|продан$|комисси|прибыл|доставк|замер)"),
     ("size", r"(размер|^р-р|^рр$|^р\.?$|\bsizes?\b|ростовк)"),
@@ -342,6 +346,23 @@ def _infer_layout(sheet: Sheet) -> Layout | None:
     return Layout(header_row=-1, cols=cols)
 
 
+_TELEGRAM = re.compile(r"https?://(?:www\.)?(?:t\.me|telegram\.me)/", re.I)
+_NOT_ITEM_LINK = re.compile(r"замер|размерн|сетк", re.I)
+_NAME_PENDING = re.compile(r"предзаказ|под\s*заказ|в\s*пути|ожида|поставк(?!щ)", re.I)
+
+
+def _pending_fragments(text: str) -> list[tuple[str, list[str]]]:
+    """Части ячейки размеров с «будет позже»: [(«через 3-5 дней», [размеры этой части или пусто — все])]."""
+    parens = re.findall(r"\(([^()]*)\)", text)
+    rest = re.sub(r"\([^()]*\)", " ", text)
+    out = []
+    for part in parens + re.split(r"[,;\n]", rest):
+        note = pending_note(part.strip(" -—–:"))
+        if note:
+            out.append((note, [size for size, _q in parse_size_list(part)]))
+    return out
+
+
 _PAREN_TAIL = re.compile(r"^(.*\S)\s*\(([^()]*)\)\s*$")
 _MARK_TAIL = re.compile(r"^(.*\S)[\s,;]+(?:р\.|р-р|размер|size)\s*[:.]?\s*([\w./-]+)\s*$", re.I)
 _COMMA_TAIL = re.compile(r"^(.*\S)\s*[,;]\s*([\w./-]+)\s*$")
@@ -401,6 +422,8 @@ class _SheetParser:
         self.pending_link = ""               # ссылка на фото, стоящая строкой выше названия
         self.block_name = ""
         self.block_link = ""
+        self.soon: dict[str, str] = {}       # размеры текущей строки, которых пока нет («Поставка ~ 29.11»)
+        self.pending_soon: dict[str, str] = {}
         self.x_marks = 0
         self.pos_marks = 0
 
@@ -462,7 +485,28 @@ class _SheetParser:
         }
 
     def _url(self, r: int) -> str:
-        return next((v for v in self.sheet.rows[r] if v.startswith(("http://", "https://"))), "")
+        """Ссылка на вещь в строке: текст-ссылка или гиперссылка; пост в Telegram — в первую очередь.
+        Ссылки на замеры и размерную сетку — не про саму вещь."""
+        s, found = self.sheet, []
+        for c, text in enumerate(s.rows[r]):
+            if text.startswith(("http://", "https://")):
+                found.append(text.split()[0])
+            elif (r, c) in s.links and not _NOT_ITEM_LINK.search(text):
+                found.append(s.links[(r, c)])
+        return next((u for u in found if _TELEGRAM.match(u)), found[0] if found else "")
+
+    def _row_note(self, r: int, name: str) -> str:
+        """«В пути» / «поставка 29.11» в примечании, статусе или в самом названии — на всю строку."""
+        s, lay = self.sheet, self.layout
+        for col in ("note", "status"):
+            note = pending_note(s.cell(r, lay.col(col)))
+            if note:
+                return note
+        m = _NAME_PENDING.search(name)
+        if m:
+            inner = re.search(r"\(([^()]*)\)", name)
+            return clean(inner.group(1)) if inner and _NAME_PENDING.search(inner.group(1)) else clean(name)
+        return ""
 
     def _struck(self, r: int) -> bool:
         s, lay = self.sheet, self.layout
@@ -473,6 +517,10 @@ class _SheetParser:
         s = self.sheet
         if not s.cell(r, c) and (r, c) in s.hmerge and s.hmerge[(r, c)] in self.layout.size_cols:
             c = s.hmerge[(r, c)]             # «много» на несколько размеров сразу
+        note = pending_note(s.live_cell(r, c))
+        if note:                             # «Поставка ~ 29.11» — размера пока нет
+            self.soon[echo or ""] = note
+            return 0
         st = parse_stock(s.live_cell(r, c), s.num(r, c), echo)
         if st == AMBIG:
             self.x_marks += 1
@@ -482,6 +530,7 @@ class _SheetParser:
 
     def _data_row(self, r: int) -> None:
         s, lay = self.sheet, self.layout
+        self.soon = {}
         f = self._fields(r)
         filled = sum(1 for v in s.rows[r] if v)
         role_cols = len(lay.cols) + (1 if lay.size_cols else 0)
@@ -500,6 +549,7 @@ class _SheetParser:
                 self.pending_link = self.pending_link or self._url(r)
                 if marks:                     # отметки стоят над названием (объединённые ячейки)
                     self.pending = {lay.size_cols[c]: self._stock(r, c, lay.size_cols[c]) for c in sorted(lay.size_cols)}
+                    self.pending_soon = dict(self.soon)
                 return
             if wide and not marks:
                 return
@@ -516,11 +566,14 @@ class _SheetParser:
             if not f["name"]:
                 f["name"] = f["article"]
             if not self.mine:
+                name_col = lay.col("name") if s.cell(r, lay.col("name")) else lay.col("article")
+                # название пришло из объединённой ячейки — это та же вещь, а ссылка в строке относится к блоку
+                own = "" if (r, name_col) in s.vfill else self._url(r)
                 if norm(f["name"]) != self.block_name:
                     self.block_name = norm(f["name"])
-                    self.block_link = self.pending_link or self._url(r)
+                    self.block_link = self.pending_link or own
                     self.pending_link = ""
-                f["link"] = self.block_link
+                f["link"] = own or self.block_link     # у каждой строки свой пост — это разные вещи
             self.prev = dict(f)
 
         if self.mine:
@@ -531,6 +584,7 @@ class _SheetParser:
             sizes: dict[str, int | None] = {}
             if not marks and self.pending:
                 sizes = self.pending
+                self.soon = dict(self.pending_soon)
             else:
                 for c in sorted(lay.size_cols):
                     size = lay.size_cols[c]
@@ -542,9 +596,16 @@ class _SheetParser:
         else:
             self._plain_row(r, f, struck)
             return
+        note = self._row_note(r, f["name"])
+        if note:
+            sizes = sizes or {NOSIZE: 0}
+            for k in sizes:
+                sizes[k] = 0
+                self.soon.setdefault(k, note)
         if struck:
             sizes = {k: 0 for k in sizes}
-        self._add(f, sizes, r)
+            self.soon = {}
+        self._add({**f, "soon": dict(self.soon)}, sizes, r)
 
     def _list_sizes(self, r: int) -> tuple[dict[str, int | None], str]:
         s, lay = self.sheet, self.layout
@@ -556,6 +617,10 @@ class _SheetParser:
         if not full:
             return ({NOSIZE: qty} if qc is not None else {}), ""
         pairs_full = parse_size_list(full)
+        later = _pending_fragments(full)
+        if later and not pairs_full:          # в ячейке размеров только «Поставка 29.11»
+            self.soon[NOSIZE] = "; ".join(note for note, _sizes in later)
+            return {NOSIZE: 0}, full
         if not pairs_full:
             known, stock = parse_marker(live, s.num(r, sc))
             if known:                         # «есть», «нет», «-», «много», «5 шт»
@@ -575,6 +640,10 @@ class _SheetParser:
                     sizes[only] = qty
             elif qty == 0:
                 sizes = {k: 0 for k in sizes}
+        for note, named in later:             # «S M L (через 3-5 дней)», «S M, XL — поставка 29.11»
+            for size in (named or list(sizes)):
+                sizes[size] = 0
+                self.soon[size] = note
         return sizes, full
 
     def _plain_row(self, r: int, f: dict, struck: bool) -> None:
@@ -583,8 +652,14 @@ class _SheetParser:
         stock = self._stock(r, qc) if qc is not None else None
         if stock == AMBIG:
             stock = None
+        note = self._row_note(r, f["name"])
+        if note:
+            stock = 0
+            self.soon.setdefault("", note)
         if struck:
             stock = 0
+            self.soon = {}
+        f = {**f, "soon": dict(self.soon)}
         name = f["name"]
         child = _child_size(name) if self.parent is not None else None
         if child:
@@ -595,7 +670,11 @@ class _SheetParser:
             else:
                 target = parent
             target.sizes.pop(NOSIZE, None)
+            target.soon.pop(NOSIZE, None)
             target.sizes[size] = merge_stock(target.sizes[size], stock) if size in target.sizes else stock
+            if "" in self.soon:
+                target.soon[size] = self.soon[""]
+            target.soon = {k: v for k, v in target.soon.items() if not is_available(target.sizes.get(k, 0))}
             self.prev = None
             return
         split = split_name_size(name)
@@ -610,10 +689,16 @@ class _SheetParser:
         self._parent_fields = dict(f)
 
     def _add(self, f: dict, sizes: dict[str, int | None], r: int) -> Item:
+        soon = dict(f.get("soon") or {})
+        if "" in soon:                       # отметка на всю вещь — относится ко всем её размерам
+            note = soon.pop("")
+            for k in sizes:
+                soon.setdefault(k, note)
         item = Item(sheet=self.sheet.name, name=clean(f["name"]), article=clean(f["article"]),
                     color=clean(f["color"]), price=f["price"], status=clean(f["status"]),
                     kind=clean(f["kind"]), raw=clean(f["raw"]), link=f.get("link", ""),
-                    sizes=dict(sizes), row=r + 1)
+                    sizes=dict(sizes), row=r + 1,
+                    soon={k: v for k, v in soon.items() if k in sizes and not is_available(sizes[k])})
         old = self.items.get(item.key)
         if old is None:
             self.items[item.key] = item
@@ -632,6 +717,9 @@ class _SheetParser:
         if item.raw and item.raw != old.raw:
             old.raw = ""                                     # строки разные — одной записью не показать
         old.price = old.price or item.price
+        for k, v in item.soon.items():
+            old.soon.setdefault(k, v)
+        old.soon = {k: v for k, v in old.soon.items() if k in old.sizes and not is_available(old.sizes[k])}
         return old
 
     def _resolve_ambiguous(self) -> None:
@@ -784,21 +872,43 @@ def describe(table: ParsedTable, limit: int = 4) -> str:
     return "\n".join(lines)
 
 
+def soon_summary(soon: dict[str, str]) -> str:
+    """{S: «Поставка ~ 29.11», M: «Поставка ~ 29.11»} → «S, M — Поставка ~ 29.11»."""
+    groups: dict[str, list[str]] = {}
+    for size, note in soon.items():
+        groups.setdefault(note, []).append(size)
+    parts = []
+    for note, sizes in groups.items():
+        real = sort_sizes([s for s in sizes if s and s != NOSIZE])
+        parts.append(f"{', '.join(real)} — {note}" if real else note)
+    return "; ".join(parts)
+
+
 def sizes_text(item: Item) -> str:
-    """Размеры в наличии одной строкой: «S, M (2 шт), L»."""
+    """Размеры в наличии одной строкой: «S, M (2 шт), L»; плюс то, что поставщик только обещает."""
     avail = item.available()
+    later = f"⏳ {soon_summary(item.soon)}" if item.soon else ""
+    if not avail and later:
+        return f"сейчас нет · {later}"
     if not item.has_real_sizes():
         if not avail:
             return "нет в наличии"
         qty = item.sizes.get(NOSIZE)
-        return f"есть, {qty} шт" if qty else "есть"
-    if not avail:
+        text = f"есть, {qty} шт" if qty else "есть"
+    elif not avail:
         return "нет размеров"
-    parts = []
-    for size in sort_sizes(avail):
-        qty = item.sizes[size]
-        parts.append(f"{size} ({qty} шт)" if qty else size)
-    return ", ".join(parts)
+    else:
+        text = ", ".join(f"{size} ({item.sizes[size]} шт)" if item.sizes[size] else size
+                         for size in sort_sizes(avail))
+    return f"{text} · {later}" if later else text
+
+
+def link_html(url: str) -> str:
+    """Ссылка на вещь для сообщения: пост в Telegram или фото."""
+    if not url:
+        return ""
+    label = "пост в ТГ" if _TELEGRAM.match(url) else "фото"
+    return f'<a href="{escape(url, quote=True)}">{label}</a>'
 
 
 def item_line(item: Item) -> str:
