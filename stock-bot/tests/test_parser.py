@@ -187,6 +187,7 @@ def test_supply_notes_in_size_lists(make_xlsx):
         ["Пуховик Zara бордовый", "S M L XL XXL (через 3-5 дней)", 5500],
         ["Пуховик Zara синий", "S M, XL - поставка 29.11", 5500],
         ["Пуховик Prada", "Поставка 29.11", 5000],
+        ["Пуховик Valentino", "S M L (поставка 29.11, вечером), XL", 5000],
         ["Пуховик Boss", "S M L", 4500],
     ]))
     items = by_name(table)
@@ -195,6 +196,8 @@ def test_supply_notes_in_size_lists(make_xlsx):
     assert items["Пуховик Zara синий"].available() == ["S", "M"]
     assert items["Пуховик Zara синий"].soon == {"XL": "XL - поставка 29.11"}
     assert sizes_text(items["Пуховик Prada"]) == "сейчас нет · ⏳ Поставка 29.11"
+    assert items["Пуховик Valentino"].available() == ["XL"]
+    assert sizes_text(items["Пуховик Valentino"]) == "XL · ⏳ S, M, L — поставка 29.11, вечером"
     assert items["Пуховик Boss"].soon == {} and items["Пуховик Boss"].available() == ["S", "M", "L"]
 
 

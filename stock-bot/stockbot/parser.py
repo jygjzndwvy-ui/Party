@@ -352,14 +352,16 @@ _NAME_PENDING = re.compile(r"предзаказ|под\s*заказ|в\s*пут�
 
 
 def _pending_fragments(text: str) -> list[tuple[str, list[str]]]:
-    """Части ячейки размеров с «будет позже»: [(«через 3-5 дней», [размеры этой части или пусто — все])]."""
-    parens = re.findall(r"\(([^()]*)\)", text)
-    rest = re.sub(r"\([^()]*\)", " ", text)
+    """Части ячейки размеров с «будет позже»: [(что пишет поставщик, [размеры этой части или пусто — все])].
+
+    «S M L XL (через 3-5 дней)» — все размеры; «S M L (поставка 29.11), XL» — только S, M, L."""
     out = []
-    for part in parens + re.split(r"[,;\n]", rest):
-        note = pending_note(part.strip(" -—–:"))
-        if note:
-            out.append((note, [size for size, _q in parse_size_list(part)]))
+    for part in re.split(r"[,;\n](?![^()]*\))", text):          # запятые внутри скобок не делят ячейку
+        part = part.strip(" -—–:")
+        if not pending_note(part):
+            continue
+        inner = next((p for p in re.findall(r"\(([^()]*)\)", part) if pending_note(p)), "")
+        out.append((clean(inner) if inner else clean(part), [size for size, _q in parse_size_list(part)]))
     return out
 
 
