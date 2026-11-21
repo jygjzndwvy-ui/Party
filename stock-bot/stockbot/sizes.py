@@ -118,6 +118,17 @@ def sort_key(size: str):
         return (2, 0, size)
 
 
+# Российские размеры одежды → буквенные, как принято у продавца: 42 — S, 44 — M, 46 — L, 48 — XL.
+RU_LETTERS = {"40": "XS", "42": "S", "44": "M", "46": "L", "48": "XL", "50": "XXL", "52": "XXXL",
+              "54": "4XL", "56": "5XL", "58": "6XL"}
+
+
+def size_matches(wanted: str, have: str) -> bool:
+    """Подходит ли размер вещи под запрос: «44» находит и одежду M, и обувь 44.
+    Обратно не работает: у одежды числа уже заменены буквами, а 44 у обуви — не M."""
+    return wanted == have or RU_LETTERS.get(wanted) == have
+
+
 def sort_sizes(sizes) -> list[str]:
     return sorted(sizes, key=sort_key)
 

@@ -227,3 +227,27 @@ def test_xlsx_hyperlinks(make_xlsx):
     wb.save(buf)
     items = by_name(parse_table(buf.getvalue()))
     assert items["Худи"].link == "https://t.me/shop/5" and items["Кепка"].link == "https://t.me/shop/7"
+
+
+def test_russian_clothing_sizes_become_letters(make_xlsx):
+    from stockbot.workbook import load_sheets
+    clothes = load_sheets(make_xlsx([
+        ["Название", "42", "44", "46", "48", "Цена"],
+        ["Худи Stone Island", 1, 0, 2, "+", 4000],
+    ], title="Худи"))
+    lists = load_sheets(make_xlsx([
+        ["Наименование", "Размеры", "Цена"],
+        ["Пуховик Zara", "44, 46 (поставка 29.11), 50", 5000],
+        ["Кроссовки Nike", "42 44", 6000],
+        ["Джинсы Diesel", "30 32", 3000],
+    ], title="Наличие"))
+    shoes = load_sheets(make_xlsx([["Название", "40", "41", "42", "44"], ["Jordan 11", 0, 1, 1, 2]], title="Обувь"))
+    shoes_even = load_sheets(make_xlsx([["Название", "42", "44"], ["Golden Goose", 1, 1]], title="Кроссовки"))
+    items = by_name(parse_sheets(clothes + lists + shoes + shoes_even))
+    assert items["Худи Stone Island"].sizes == {"S": 1, "M": 0, "L": 2, "XL": None}
+    assert items["Пуховик Zara"].available() == ["M", "XXL"] and items["Пуховик Zara"].soon == {"L": "поставка 29.11"}
+    assert sizes_text(items["Пуховик Zara"]) == "M, XXL · ⏳ L — поставка 29.11"
+    assert list(items["Кроссовки Nike"].sizes) == ["42", "44"]                 # обувь по названию
+    assert list(items["Джинсы Diesel"].sizes) == ["30", "32"]                  # джинсовые размеры — не одежда 42–48
+    assert list(items["Jordan 11"].sizes) == ["40", "41", "42", "44"]          # есть нечётный — обувь
+    assert list(items["Golden Goose"].sizes) == ["42", "44"]                   # лист «Кроссовки»

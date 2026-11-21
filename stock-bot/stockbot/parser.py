@@ -13,7 +13,7 @@ import re
 from dataclasses import asdict, dataclass, field
 from html import escape
 
-from .sizes import (AMBIG, NOSIZE, is_available, is_letter, loose_tokens, merge_stock, parse_marker,
+from .sizes import (AMBIG, NOSIZE, RU_LETTERS, is_available, is_letter, loose_tokens, merge_stock, parse_marker,
                     parse_size, parse_size_list, parse_stock, pending_note, sort_sizes)
 from .textnorm import clean, norm, norm_article
 from .workbook import Sheet, TableError, load_sheets
@@ -347,6 +347,8 @@ def _infer_layout(sheet: Sheet) -> Layout | None:
 
 
 _TELEGRAM = re.compile(r"https?://(?:www\.)?(?:t\.me|telegram\.me)/", re.I)
+_FOOTWEAR = re.compile(r"кроссовк|\bкед|ботин|сникерс|обув|туфл|сапог|лофер|слипон|сандал|шл[её]пан|тапк|мокасин"
+                       r"|sneaker|shoe|jordan|yeezy|air\s*max|air\s*force|new\s*balance|vans\b|converse", re.I)
 _NOT_ITEM_LINK = re.compile(r"замер|размерн|сетк", re.I)
 _NAME_PENDING = re.compile(r"предзаказ|под\s*заказ|в\s*пути|ожида|поставк(?!щ)", re.I)
 
@@ -466,6 +468,21 @@ class _SheetParser:
             self._data_row(r)
             r += 1
         self._resolve_ambiguous()
+        self._ru_sizes_to_letters()
+
+    def _ru_sizes_to_letters(self) -> None:
+        """Одежда в российских размерах: 42, 44, 46, 48 → S, M, L, XL.
+
+        Обувь не трогаем: её выдают название или лист («кроссовки», «обувь») и нечётные
+        размеры (41, 43) — с ними набор размеров вещи уже не похож на одежду."""
+        if self.mine or _FOOTWEAR.search(self.sheet.name):
+            return
+        for item in self.items.values():
+            real = [s for s in item.sizes if s != NOSIZE]
+            if not real or not all(s in RU_LETTERS for s in real) or _FOOTWEAR.search(item.name):
+                continue
+            item.sizes = {RU_LETTERS.get(s, s): v for s, v in item.sizes.items()}
+            item.soon = {RU_LETTERS.get(s, s): v for s, v in item.soon.items()}
 
     def _fields(self, r: int) -> dict:
         s, lay = self.sheet, self.layout

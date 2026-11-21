@@ -5,7 +5,7 @@ import re
 from collections import Counter
 
 from .parser import Item
-from .sizes import is_available, parse_size
+from .sizes import is_available, parse_size, size_matches
 from .textnorm import BRAND_ALIASES, canon_token, norm, same_token, tokens
 
 AUTO_SCORE = 0.89      # выше — считаем, что нашли ту самую вещь
@@ -208,8 +208,8 @@ def search(items: list[Item], sizes: list[str], query_words: list[str]) -> list[
     found = []
     sheet_cache: dict[str, list[str]] = {}
     for item in items:
-        if any(not (s in item.sizes and is_available(item.sizes[s])) for s in sizes):
-            continue
+        if not all(any(size_matches(s, have) and is_available(q) for have, q in item.sizes.items()) for s in sizes):
+            continue                              # «44» находит M и наоборот
         if want:
             if item.sheet not in sheet_cache:
                 sheet_cache[item.sheet] = name_tokens(item.sheet)

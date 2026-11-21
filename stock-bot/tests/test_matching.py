@@ -69,3 +69,11 @@ def test_category_words_and_typos():
     assert names(["пуховик"]) == ["Пуховки Canada Goose", "Stone Island Camo"]
     assert names(["кофты"]) == ["Худи Stone Island"]
     assert names(["штаны"]) == ["Штаны Nike"]
+
+
+def test_search_matches_russian_and_letter_sizes():
+    base = [Item(sheet="s", name="Худи A", sizes={"S": 1, "M": 1, "L": 0}),
+            Item(sheet="s", name="Кроссовки B", sizes={"42": 1, "44": 1})]
+    assert [i.name for i in search(base, ["44"], [])] == ["Худи A", "Кроссовки B"]
+    assert [i.name for i in search(base, ["M"], [])] == ["Худи A"]            # 44 у обуви — не M
+    assert [i.name for i in search(base, ["46"], [])] == []
