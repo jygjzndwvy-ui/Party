@@ -19,12 +19,15 @@ NANOTON = 1_000_000_000
 CURRENCY_EXP = {"TON": 9, "XTR": 0, "JPY": 0, "KRW": 0, "VND": 0}  # остальные валюты: 2 знака
 CREDENTIALS = PRIVATE / "telegram.json"
 SESSION = PRIVATE / "gift"
+SESSION_FILE = PRIVATE / "gift.session"
 MAX_FLOOD_WAIT = 3600
 
 
-def make_client() -> TelegramClient:
-    data = json.loads(CREDENTIALS.read_text(encoding="utf-8"))
-    return TelegramClient(str(SESSION), int(data["api_id"]), data["api_hash"], flood_sleep_threshold=60)
+def make_client(api_id: int | None = None, api_hash: str | None = None) -> TelegramClient:
+    if api_id is None or api_hash is None:
+        data = json.loads(CREDENTIALS.read_text(encoding="utf-8"))
+        api_id, api_hash = int(data["api_id"]), data["api_hash"]
+    return TelegramClient(str(SESSION), api_id, api_hash, flood_sleep_threshold=60)
 
 
 def _ts(value) -> int | None:

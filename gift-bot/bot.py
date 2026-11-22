@@ -23,16 +23,17 @@ from contextlib import asynccontextmanager, suppress
 from datetime import datetime
 
 try:
-    from telethon import events
+    from telethon import errors, events
 except ImportError:
     sys.exit("Не установлена библиотека Telethon. Выполните: pip install -r requirements.txt")
 
 from giftbot import report
 from giftbot.config import DATA, PRIVATE, Config, load_config
+from giftbot.credentials import ask_credentials
 from giftbot.models import RateLimited
 from giftbot.scanner import Market, Scanner
 from giftbot.store import Store
-from giftbot.telegram_api import CREDENTIALS, GiftApi, listing_from_unique, make_client
+from giftbot.telegram_api import CREDENTIALS, SESSION_FILE, GiftApi, listing_from_unique, make_client
 
 LOG_FILE = DATA / "bot.log"
 PAPER_DB = DATA / "paper.db"
@@ -60,26 +61,50 @@ async def connected(cfg: Config):
         await client.disconnect()
 
 
+def mask_phone(phone: str) -> str:
+    phone = phone.strip()
+    if len(phone) <= 4:
+        return phone
+    return phone[:2] + "*" * (len(phone) - 4) + phone[-2:]
+
+
+def save_credentials(data: dict) -> None:
+    CREDENTIALS.write_text(json.dumps(data), encoding="utf-8")
+    CREDENTIALS.chmod(0o600)
+
+
 async def cmd_login(cfg: Config) -> None:
     PRIVATE.mkdir(exist_ok=True)
-    if not CREDENTIALS.exists():
-        print(
-            "1) Откройте https://my.telegram.org и войдите по номеру телефона.\n"
-            "2) Откройте «API development tools» и создайте приложение (название любое).\n"
-            "3) Скопируйте сюда api_id и api_hash. Никому их не отправляйте.\n"
+    saved = json.loads(CREDENTIALS.read_text(encoding="utf-8")) if CREDENTIALS.exists() else {}
+    if saved.get("api_id") and saved.get("api_hash"):
+        api_id, api_hash = int(saved["api_id"]), saved["api_hash"]
+    else:
+        api_id, api_hash = ask_credentials()
+    phone = saved.get("phone")  # номер можно заранее записать в telegram.json, тогда бот его не спросит
+    if phone:
+        print(f"Вход по номеру {mask_phone(phone)}. Telegram пришлёт код в приложение Telegram.")
+    client = make_client(api_id, api_hash)
+    try:
+        await client.start(
+            phone=phone or (lambda: input("Телефон в формате +79991234567: ").strip()),
+            code_callback=lambda: input("Код из Telegram (пришёл в приложение Telegram): ").strip(),
+            password=lambda: getpass.getpass("Пароль двухэтапной проверки (символы не видны при вводе): "),
         )
-        api_id = input("api_id: ").strip()
-        api_hash = input("api_hash: ").strip()
-        if not api_id.isdigit() or len(api_hash) < 20:
-            sys.exit("Похоже, данные введены с ошибкой. Запустите python bot.py login ещё раз.")
-        CREDENTIALS.write_text(json.dumps({"api_id": int(api_id), "api_hash": api_hash}), encoding="utf-8")
-    client = make_client()
-    await client.start(
-        phone=lambda: input("Телефон в формате +79991234567: ").strip(),
-        code_callback=lambda: input("Код из Telegram: ").strip(),
-        password=lambda: getpass.getpass("Пароль двухэтапной проверки (символы не видны при вводе): "),
-    )
-    me = await client.get_me()
+        me = await client.get_me()
+    except Exception as e:
+        await client.disconnect()
+        SESSION_FILE.unlink(missing_ok=True)  # недоделанный вход не оставляем
+        if isinstance(e, errors.ApiIdInvalidError):
+            CREDENTIALS.unlink(missing_ok=True)
+            sys.exit("Telegram не принял api_id и api_hash. Проверьте их на my.telegram.org и запустите вход ещё раз.")
+        if isinstance(e, errors.PhoneNumberInvalidError):
+            if phone:
+                save_credentials({"api_id": api_id, "api_hash": api_hash})  # неверный номер больше не подставляем
+            sys.exit("Telegram не узнал номер. Запустите вход ещё раз и введите номер в формате +79991234567.")
+        if isinstance(e, errors.FloodWaitError):
+            sys.exit(f"Слишком много попыток входа. Telegram просит подождать {e.seconds // 60 + 1} мин.")
+        sys.exit(f"Вход не удался: {e}. Запустите вход ещё раз.")
+    save_credentials({"api_id": api_id, "api_hash": api_hash})  # номер телефона после входа не храним
     await client.disconnect()
     print(f"Готово, вход выполнен: {me.first_name}.")
     print("Файлы входа лежат в папке private. Никому их не отправляйте: это ключ к вашему аккаунту.")
