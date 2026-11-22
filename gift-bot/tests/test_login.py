@@ -4,7 +4,7 @@ import unittest
 try:
     from telethon import errors, functions
     from telethon.tl.types import auth as A
-    from giftbot.login import LoginBlocked, describe, normalize_phone, sign_in
+    from giftbot.login import QR_GIVE_UP_SEC, LoginBlocked, describe, normalize_phone, qr_sign_in, sign_in
 except ImportError:  # Telethon не установлен
     A = None
 
@@ -96,6 +96,79 @@ class LoginTest(unittest.IsolatedAsyncioTestCase):
     def test_normalize_phone(self):
         self.assertEqual(normalize_phone("8 988 000-00-42"), "+79880000042")
         self.assertEqual(normalize_phone("+7 (988) 000 00 42"), "+79880000042")
+
+
+class FakeQR:
+    def __init__(self, outcomes):
+        self.outcomes = list(outcomes)
+        self.url = "tg://login?token=first"
+        self.recreated = 0
+
+    async def wait(self):
+        outcome = self.outcomes.pop(0)
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
+
+    async def recreate(self):
+        self.recreated += 1
+        self.url = f"tg://login?token=new{self.recreated}"
+
+
+class FakeQRClient(FakeClient):
+    def __init__(self, qr, sign_in_results=()):
+        super().__init__(None, sign_in_results=sign_in_results)
+        self.qr = qr
+
+    async def qr_login(self):
+        return self.qr
+
+
+@unittest.skipIf(A is None, "нужен Telethon: pip install -r requirements.txt")
+class QRLoginTest(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        self.page = Path(tempfile.mkdtemp()) / "data" / "login-qr.html"
+        self.opened = []
+
+    async def test_expired_code_is_replaced_then_scanned(self):
+        import asyncio
+        qr = FakeQR([asyncio.TimeoutError(), "user"])
+        pages = []
+
+        async def wait_and_capture():
+            pages.append(self.page.read_text(encoding="utf-8"))
+            return await FakeQR.wait(qr)
+        qr.wait = wait_and_capture
+        user = await qr_sign_in(FakeQRClient(qr), self.page, open_page=self.opened.append, say=lambda s: None)
+        self.assertEqual(user, "user")
+        self.assertEqual(qr.recreated, 1)
+        self.assertEqual(self.opened, [self.page])  # страницу открываем один раз, дальше она обновляется сама
+        self.assertIn("<svg", pages[0])
+        self.assertIn('http-equiv="refresh"', pages[0])
+        self.assertNotEqual(pages[0], pages[1])     # после истечения на странице новый код
+        self.assertIn("можно закрыть", self.page.read_text(encoding="utf-8"))
+
+    async def test_two_step_password_after_scan(self):
+        qr = FakeQR([errors.SessionPasswordNeededError(request=None)])
+        client = FakeQRClient(qr, sign_in_results=[errors.PasswordHashInvalidError(request=None), "user"])
+
+        async def password(prompt):
+            return "secret"
+        user = await qr_sign_in(client, self.page, open_page=self.opened.append, ask_password=password,
+                                say=lambda s: None)
+        self.assertEqual(user, "user")
+        self.assertEqual(client.sign_ins, [{"password": "secret"}, {"password": "secret"}])
+
+    async def test_gives_up_after_ten_minutes(self):
+        import asyncio
+        ticks = iter([0, QR_GIVE_UP_SEC + 1])
+        qr = FakeQR([asyncio.TimeoutError()])
+        with self.assertRaises(LoginBlocked):
+            await qr_sign_in(FakeQRClient(qr), self.page, open_page=self.opened.append, say=lambda s: None,
+                             clock=lambda: next(ticks))
+        self.assertIn("можно закрыть", self.page.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

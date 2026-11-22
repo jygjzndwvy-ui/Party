@@ -18,6 +18,7 @@ import argparse
 import asyncio
 import json
 import time
+import webbrowser
 from contextlib import asynccontextmanager, suppress
 from datetime import datetime
 
@@ -29,7 +30,7 @@ except ImportError:
 from giftbot import report
 from giftbot.config import DATA, PRIVATE, Config, load_config
 from giftbot.credentials import ask_credentials
-from giftbot.login import LoginBlocked, normalize_phone, sign_in
+from giftbot.login import LoginBlocked, normalize_phone, qr_sign_in, sign_in
 from giftbot.models import RateLimited
 from giftbot.scanner import Market, Scanner
 from giftbot.store import Store
@@ -37,6 +38,7 @@ from giftbot.telegram_api import CREDENTIALS, SESSION_FILE, GiftApi, listing_fro
 
 LOG_FILE = DATA / "bot.log"
 PAPER_DB = DATA / "paper.db"
+QR_PAGE = DATA / "login-qr.html"
 
 
 def log(message: str) -> None:
@@ -73,22 +75,28 @@ def save_credentials(data: dict) -> None:
     CREDENTIALS.chmod(0o600)
 
 
-async def cmd_login(cfg: Config) -> None:
+async def cmd_login(cfg: Config, by_code: bool = False) -> None:
+    """По умолчанию вход по QR-коду; с --code — по коду из сообщения Telegram."""
     PRIVATE.mkdir(exist_ok=True)
     saved = json.loads(CREDENTIALS.read_text(encoding="utf-8")) if CREDENTIALS.exists() else {}
     if saved.get("api_id") and saved.get("api_hash"):
         api_id, api_hash = int(saved["api_id"]), saved["api_hash"]
     else:
         api_id, api_hash = ask_credentials()
-    phone = saved.get("phone")  # номер можно заранее записать в telegram.json, тогда бот его не спросит
-    if phone:
-        phone = normalize_phone(phone)
-        print(f"Вход по номеру {mask_phone(phone)}.")
-    else:
-        phone = normalize_phone(input("Телефон, например +79991234567 или 89991234567: "))
+    phone = None
+    if by_code:
+        phone = saved.get("phone")  # номер можно заранее записать в telegram.json, тогда бот его не спросит
+        if phone:
+            phone = normalize_phone(phone)
+            print(f"Вход по номеру {mask_phone(phone)}.")
+        else:
+            phone = normalize_phone(input("Телефон, например +79991234567 или 89991234567: "))
     client = make_client(api_id, api_hash)
     try:
-        me = await sign_in(client, phone, say=log)  # подсказки о коде пишем и в data/bot.log
+        if by_code:
+            me = await sign_in(client, phone, say=log)  # подсказки о коде пишем и в data/bot.log
+        else:
+            me = await qr_sign_in(client, QR_PAGE, open_page=lambda page: webbrowser.open(page.as_uri()), say=log)
     except Exception as e:
         await client.disconnect()
         SESSION_FILE.unlink(missing_ok=True)  # недоделанный вход не оставляем
@@ -262,14 +270,18 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Бот для NFT-подарков Telegram (этап 1: наблюдение и бумажная торговля)")
     sub = parser.add_subparsers(dest="command", required=True, metavar="команда")
     for name, (_, help_text) in COMMANDS.items():
-        sub.add_parser(name, help=help_text)
+        command_parser = sub.add_parser(name, help=help_text)
+        if name == "login":
+            command_parser.add_argument("--code", action="store_true",
+                                        help="войти по коду из сообщения Telegram вместо QR-кода")
     args = parser.parse_args()
     try:
         cfg = load_config()
     except ValueError as e:
         sys.exit(str(e))
+    command = COMMANDS[args.command][0]
     try:
-        asyncio.run(COMMANDS[args.command][0](cfg))
+        asyncio.run(command(cfg, by_code=args.code) if args.command == "login" else command(cfg))
     except KeyboardInterrupt:
         print("\nОстановлено.")
 

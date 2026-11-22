@@ -11,7 +11,7 @@ for d in private data; do
   if [ ! -e "$d" ]; then mkdir -p "$d.nosync" && ln -s "$d.nosync" "$d"; fi
 done
 
-if ! .venv/bin/python -c 'import telethon' 2>/dev/null; then
+if ! .venv/bin/python -c 'import telethon, qrcode' 2>/dev/null; then
   echo "Устанавливаю окружение (один раз)…"
   PY=$(command -v python3.13 || command -v python3.12 || command -v python3.11 || command -v python3)
   if [ ! -e .venv ]; then "$PY" -m venv .venv.nosync && ln -s .venv.nosync .venv; fi

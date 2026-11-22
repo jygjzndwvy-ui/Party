@@ -1,12 +1,19 @@
-"""Вход в Telegram: бот говорит, куда Telegram отправил код, и умеет попросить другой способ."""
+"""Вход в Telegram: по QR-коду (без кода из сообщения) или по коду, с подсказкой, куда он отправлен."""
 from __future__ import annotations
 
 import asyncio
 import getpass
+import html
 import re
+import time
+from pathlib import Path
+from typing import Callable
 
 from telethon import errors, functions, types
 from telethon.tl.types import auth as A
+
+QR_REFRESH_SEC = 4      # страница с QR-кодом перечитывается сама: код живёт около 30 секунд
+QR_GIVE_UP_SEC = 600    # если за 10 минут код не отсканировали, вход прекращается
 
 
 class LoginBlocked(Exception):
@@ -125,3 +132,66 @@ async def sign_in(client, phone: str, ask=ainput, ask_password=agetpass, say=pri
                 except errors.PasswordHashInvalidError:
                     say("Пароль не подошёл.")
             raise LoginBlocked("Пароль не подошёл три раза. Запустите вход ещё раз.")
+
+
+# --- Вход по QR-коду: Telegram на телефоне → Настройки → Устройства → «Подключить устройство» ---
+
+QR_HOWTO = ("Откройте Telegram на телефоне → Настройки → Устройства → «Подключить устройство» "
+            "и наведите камеру на QR-код на экране Mac.")
+
+
+def qr_page(svg: str | None, message: str) -> str:
+    refresh = f'<meta http-equiv="refresh" content="{QR_REFRESH_SEC}">' if svg else ""
+    body = f'<div class="qr">{svg}</div>' if svg else ""
+    return (
+        '<!doctype html><html lang="ru"><head><meta charset="utf-8">'
+        f"{refresh}<title>Вход в бота подарков</title><style>"
+        "body{font-family:-apple-system,Segoe UI,sans-serif;text-align:center;padding:32px 16px;"
+        "background:#fff;color:#111}.qr svg{width:300px;height:300px}p{max-width:520px;margin:16px auto}"
+        "</style></head><body><h2>Вход в бота подарков</h2>"
+        f"<p>{html.escape(message)}</p>{body}</body></html>"
+    )
+
+
+def write_qr_page(url: str, page: Path) -> None:
+    import qrcode
+    import qrcode.image.svg
+
+    svg = qrcode.make(url, image_factory=qrcode.image.svg.SvgPathImage, box_size=10, border=2)
+    page.write_text(qr_page(svg.to_string(encoding="unicode"), QR_HOWTO + " Код обновляется сам."),
+                    encoding="utf-8")
+
+
+async def qr_sign_in(client, page: Path, open_page: Callable[[Path], None], ask_password=agetpass,
+                     say=print, clock=time.monotonic):
+    """Вход без кода из сообщения: вы сканируете QR-код телефоном, где уже открыт Telegram."""
+    await client.connect()
+    if await client.is_user_authorized():
+        return await client.get_me()
+    page.parent.mkdir(parents=True, exist_ok=True)
+    qr = await client.qr_login()
+    write_qr_page(qr.url, page)
+    open_page(page)
+    say("QR-код открылся в браузере. " + QR_HOWTO)
+    started = clock()
+    try:
+        while True:
+            try:
+                return await qr.wait()
+            except asyncio.TimeoutError:
+                if clock() - started > QR_GIVE_UP_SEC:
+                    raise LoginBlocked("QR-код так и не отсканировали. Запустите вход ещё раз.")
+                await qr.recreate()  # старый код истёк: показываем новый
+                write_qr_page(qr.url, page)
+    except errors.SessionPasswordNeededError:
+        say("Телефон подтвердил вход. Осталось ввести пароль двухэтапной проверки.")
+        for _ in range(3):
+            password = await ask_password("Пароль двухэтапной проверки (символы не видны при вводе): ")
+            try:
+                return await client.sign_in(password=password)
+            except errors.PasswordHashInvalidError:
+                say("Пароль не подошёл.")
+        raise LoginBlocked("Пароль не подошёл три раза. Запустите вход ещё раз.")
+    finally:
+        page.write_text(qr_page(None, "Эту страницу можно закрыть. Результат входа написан в окне Терминала."),
+                        encoding="utf-8")
