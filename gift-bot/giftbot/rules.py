@@ -48,7 +48,7 @@ def buy_blocker(store: Store, cfg: Config, collection: str, now: int) -> str | N
     if halted:
         return f"покупки остановлены: {halted}. Возобновить: /resume"
     if store.count_opened_since(now - DAY) >= cfg.max_buys_per_day:
-        return f"лимит {cfg.max_buys_per_day} покупка(и) в сутки"
+        return f"лимит покупок в сутки ({cfg.max_buys_per_day}) уже исчерпан"
     last_loss = store.last_loss_at()
     if last_loss is not None and now - last_loss < cfg.cooldown_after_loss_hours * HOUR:
         return f"пауза {cfg.cooldown_after_loss_hours:g} ч после убыточной сделки"
