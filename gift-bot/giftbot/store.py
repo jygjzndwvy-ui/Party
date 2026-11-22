@@ -103,6 +103,10 @@ class Store:
         )
         self.db.commit()
 
+    def delete(self, key: str) -> None:
+        self.db.execute("DELETE FROM kv WHERE key = ?", (key,))
+        self.db.commit()
+
     # --- сигналы ---
     def signal_seen(self, slug: str, price: float, since: int) -> bool:
         row = self.db.execute(
@@ -150,6 +154,26 @@ class Store:
             "SELECT 1 FROM positions WHERE slug = ? AND (status = 'open' OR closed_at >= ?)", (slug, since)
         ).fetchone()
         return row is not None
+
+    # --- для правил (giftbot/rules.py) ---
+    def realized_pnl(self) -> float:
+        return self.db.execute(
+            "SELECT COALESCE(SUM(pnl), 0) FROM positions WHERE status = 'closed'").fetchone()[0]
+
+    def count_opened_since(self, since: float) -> int:
+        return self.db.execute("SELECT COUNT(*) FROM positions WHERE opened_at >= ?", (since,)).fetchone()[0]
+
+    def last_loss_at(self) -> int | None:
+        return self.db.execute(
+            "SELECT MAX(closed_at) FROM positions WHERE status = 'closed' AND pnl < 0").fetchone()[0]
+
+    def collection_loss_since(self, collection: str, since: float) -> bool:
+        if not collection:
+            return False
+        rows = self.db.execute(
+            "SELECT title FROM positions WHERE status = 'closed' AND pnl < 0 AND closed_at >= ?", (since,)
+        ).fetchall()
+        return any(r["title"].rsplit(" #", 1)[0] == collection for r in rows)
 
     def cash(self, bank: float) -> float:
         """Свободные бумажные деньги: бюджет + итог закрытых сделок − деньги в открытых."""

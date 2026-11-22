@@ -32,6 +32,11 @@ class Config:
     collections: list[str] = field(default_factory=list)
     # [report]
     daily_summary_hour: int = 21
+    # [limits] — правила, чтобы не заигрываться
+    max_buys_per_day: int = 1
+    stop_loss_total: float = 0.15
+    cooldown_after_loss_hours: float = 24.0
+    collection_cooldown_days: float = 7.0
 
 
 def load_config(path: Path | None = None) -> Config:
@@ -78,5 +83,11 @@ def validate(cfg: Config) -> None:
         problems.append("cheapest_per_collection должен быть не меньше 1")
     if not 0 <= cfg.daily_summary_hour <= 23:
         problems.append("daily_summary_hour должен быть от 0 до 23")
+    if cfg.max_buys_per_day < 1:
+        problems.append("max_buys_per_day должен быть не меньше 1")
+    if not 0 < cfg.stop_loss_total < 1:
+        problems.append("stop_loss_total должен быть от 0 до 1, например 0.15")
+    if cfg.cooldown_after_loss_hours < 0 or cfg.collection_cooldown_days < 0:
+        problems.append("паузы после убытка не могут быть отрицательными")
     if problems:
         raise ValueError("Ошибки в config.toml:\n- " + "\n- ".join(problems))

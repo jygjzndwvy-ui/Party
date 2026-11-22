@@ -11,6 +11,7 @@ from .analysis import Evaluation, evaluate, is_premium
 from .config import Config
 from .models import Collection, Event, Listing, RateLimited, Segment
 from .paper import DAY, manage_position, open_position
+from .rules import buy_blocker, check_stop_loss
 from .store import Store
 
 PAGE_LIMIT = 50                 # сколько самых дешёвых лотов брать из коллекции
@@ -63,6 +64,7 @@ class ScanStats:
     no_ton_price: int = 0
     candidates: int = 0
     signals: int = 0
+    blocked_by_rules: int = 0
     errors: int = 0
 
 
@@ -165,6 +167,9 @@ class Scanner:
         cfg = self.cfg
         now = int(self.clock())
         events: list[Event] = []
+        halt = check_stop_loss(self.store, cfg)  # правило: при большом убытке покупки останавливаются
+        if halt:
+            events.append(Event("halt", report.halted(halt)))
         good = sorted((e for e in evaluations if e.passes), key=lambda e: e.expected_profit, reverse=True)
         self.stats.signals = len(good)
         holding = self.store.positions("open")
@@ -180,6 +185,12 @@ class Scanner:
             if self.store.traded_recently(l.slug, now - REOPEN_AFTER):
                 continue
             if self.store.cash(cfg.bank_ton) + 1e-9 < l.price_ton:
+                continue
+            blocker = buy_blocker(self.store, cfg, l.collection, now)
+            if blocker:
+                if not self.stats.blocked_by_rules:
+                    self.log(f"Покупка пропущена по правилам: {blocker}")
+                self.stats.blocked_by_rules += 1
                 continue
             pos = open_position(self.store, ev, now)
             holding.append(pos)

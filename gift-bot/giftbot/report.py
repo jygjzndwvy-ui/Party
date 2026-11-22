@@ -7,6 +7,7 @@ from datetime import datetime
 from .analysis import Evaluation, is_premium, number_tags, segment_ref
 from .config import Config
 from .models import Listing, OwnedGift, Segment, ValueInfo
+from .rules import status_line
 
 
 def ton(x: float | None) -> str:
@@ -58,6 +59,12 @@ def repriced(pos, old: float, be: float) -> str:
     return f"↘️ {pos.title}: снизили цену {ton(old)} → {ton(pos.ask)} (безубыток {ton(be)})."
 
 
+def halted(reason: str) -> str:
+    return (f"⛔️ Сработало правило остановки: {reason}.\n"
+            "Новых покупок не будет, пока вы сами не напишете сюда /resume. "
+            "Уже купленное бот продолжает продавать по правилам.")
+
+
 def closed(pos) -> str:
     mark = "✅" if pos.pnl >= 0 else "❌"
     return (
@@ -80,6 +87,7 @@ def summary(store, cfg: Config, now: int) -> str:
         lines.append(f"• Держим {p.title}: куплено за {ton(p.buy_price)}, выставлено за {ton(p.ask)}, "
                      f"с {when(p.opened_at)}.")
     lines.append(f"Сигналов за сутки: {store.count_signals(now - 24 * 3600)}.")
+    lines.append(status_line(store, cfg, now))
     raw = store.get("last_stats")
     if raw:
         s = json.loads(raw)

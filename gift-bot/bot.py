@@ -32,6 +32,7 @@ from giftbot.config import DATA, PRIVATE, Config, load_config
 from giftbot.credentials import ask_credentials
 from giftbot.login import LoginBlocked, normalize_phone, qr_sign_in, sign_in
 from giftbot.models import RateLimited
+from giftbot.rules import resume as resume_buying
 from giftbot.scanner import Market, Scanner
 from giftbot.store import Store
 from giftbot.telegram_api import CREDENTIALS, SESSION_FILE, GiftApi, listing_from_unique, make_client
@@ -200,17 +201,23 @@ async def cmd_run(cfg: Config) -> None:
             command = event.pattern_match.group(1).lower()
             if command == "status":
                 await notify(report.summary(store, cfg, int(time.time())))
+            elif command == "resume":
+                resume_buying(store)
+                await notify("▶️ Покупки снова разрешены. Лимит убытка считается заново с этого момента.")
             else:
                 stop.set()
                 await notify("⏹ Останавливаюсь по команде /stop.")
 
         client.add_event_handler(
-            on_command, events.NewMessage(chats="me", outgoing=True, pattern=r"(?i)^/(stop|status)\b")
+            on_command, events.NewMessage(chats="me", outgoing=True, pattern=r"(?i)^/(stop|status|resume)\b")
         )
         await notify(
             "▶️ Бот запущен. Режим: наблюдение и бумажная торговля, реальных покупок нет.\n"
             f"Проход по рынку раз в {cfg.interval_minutes:g} мин.\n"
-            "Команды пишите сюда, в «Избранное»: /status — сводка, /stop — остановить."
+            f"Правила: не больше {cfg.max_buys_per_day} покупки в сутки, остановка при убытке "
+            f"{cfg.stop_loss_total:.0%} бюджета, пауза {cfg.cooldown_after_loss_hours:g} ч после убыточной сделки.\n"
+            "Команды пишите сюда, в «Избранное»: /status — сводка, /stop — остановить, "
+            "/resume — снова разрешить покупки после остановки."
         )
         log("Бот запущен. Остановить: Ctrl+C или /stop в «Избранном».")
 
