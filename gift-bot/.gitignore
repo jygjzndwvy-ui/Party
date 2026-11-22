@@ -1,6 +1,9 @@
 # Ключи и сессия Telegram: никогда не публиковать
-private/
+/private
+/private.nosync
 # Журнал бумажной торговли и лог
-data/
-.venv/
+/data
+/data.nosync
+/.venv
+/.venv.nosync
 __pycache__/
