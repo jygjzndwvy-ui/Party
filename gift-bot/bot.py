@@ -88,7 +88,7 @@ async def cmd_login(cfg: Config) -> None:
         phone = normalize_phone(input("Телефон, например +79991234567 или 89991234567: "))
     client = make_client(api_id, api_hash)
     try:
-        me = await sign_in(client, phone)
+        me = await sign_in(client, phone, say=log)  # подсказки о коде пишем и в data/bot.log
     except Exception as e:
         await client.disconnect()
         SESSION_FILE.unlink(missing_ok=True)  # недоделанный вход не оставляем
