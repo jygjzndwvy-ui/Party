@@ -16,7 +16,6 @@ if sys.version_info < (3, 11):
 
 import argparse
 import asyncio
-import getpass
 import json
 import time
 from contextlib import asynccontextmanager, suppress
@@ -30,6 +29,7 @@ except ImportError:
 from giftbot import report
 from giftbot.config import DATA, PRIVATE, Config, load_config
 from giftbot.credentials import ask_credentials
+from giftbot.login import LoginBlocked, normalize_phone, sign_in
 from giftbot.models import RateLimited
 from giftbot.scanner import Market, Scanner
 from giftbot.store import Store
@@ -82,18 +82,18 @@ async def cmd_login(cfg: Config) -> None:
         api_id, api_hash = ask_credentials()
     phone = saved.get("phone")  # номер можно заранее записать в telegram.json, тогда бот его не спросит
     if phone:
-        print(f"Вход по номеру {mask_phone(phone)}. Telegram пришлёт код в приложение Telegram.")
+        phone = normalize_phone(phone)
+        print(f"Вход по номеру {mask_phone(phone)}.")
+    else:
+        phone = normalize_phone(input("Телефон, например +79991234567 или 89991234567: "))
     client = make_client(api_id, api_hash)
     try:
-        await client.start(
-            phone=phone or (lambda: input("Телефон в формате +79991234567: ").strip()),
-            code_callback=lambda: input("Код из Telegram (пришёл в приложение Telegram): ").strip(),
-            password=lambda: getpass.getpass("Пароль двухэтапной проверки (символы не видны при вводе): "),
-        )
-        me = await client.get_me()
+        me = await sign_in(client, phone)
     except Exception as e:
         await client.disconnect()
         SESSION_FILE.unlink(missing_ok=True)  # недоделанный вход не оставляем
+        if isinstance(e, LoginBlocked):
+            sys.exit(str(e))
         if isinstance(e, errors.ApiIdInvalidError):
             CREDENTIALS.unlink(missing_ok=True)
             sys.exit("Telegram не принял api_id и api_hash. Проверьте их на my.telegram.org и запустите вход ещё раз.")
