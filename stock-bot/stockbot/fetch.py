@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import re
 import ssl
 from pathlib import Path
@@ -172,6 +173,38 @@ async def load_url(session: aiohttp.ClientSession, url: str) -> tuple[str, list[
             "По ссылке открывается обычный сайт, а не таблица. Бот читает Google Таблицы, Excel-файлы "
             "(.xlsx, .xls), CSV и Яндекс Диск.")
     return re.sub(r"\.(xlsx|xls|csv)$", "", name, flags=re.I), await asyncio.to_thread(load_sheets, data, name)
+
+
+def thumb_url(url: str) -> str:
+    """Превью фото одного и того же размера: от размера ячейки в таблице отпечаток не зависит."""
+    if "googleusercontent.com" in url or "/sheets-images" in url:
+        return re.sub(r"=[wsh]\d+(?:-[wh]\d+)*$", "", url) + "=w100-h100"
+    return url
+
+
+async def photo_fingerprint(session: aiohttp.ClientSession, url: str) -> str:
+    """Отпечаток фото: одна и та же картинка даёт тот же отпечаток, даже если Google сменил её адрес."""
+    data, _ctype, _final = await _get(session, thumb_url(url), limit=2 * 1024 * 1024)
+    return hashlib.sha1(data).hexdigest()[:16]
+
+
+async def label_photos(session: aiohttp.ClientSession, sheets: list[Sheet], colors: dict[str, str]) -> int:
+    """Подписываем строки цветом по фото: {отпечаток: «чёрно-жёлтая»}. Нужно, когда у поставщика несколько
+    вещей с одинаковым названием и отличаются они только фото. Фото, которое не скачалось, пропускаем."""
+    sem = asyncio.Semaphore(4)
+
+    async def one(sheet: Sheet, row: int, url: str) -> int:
+        async with sem:
+            try:
+                color = colors.get(await photo_fingerprint(session, url))
+            except TableError:
+                return 0
+        if color:
+            sheet.row_colors[row] = color
+        return 1 if color else 0
+
+    jobs = [one(sheet, row, url) for sheet in sheets for row, url in sheet.images.items()]
+    return sum(await asyncio.gather(*jobs)) if jobs else 0
 
 
 async def load_file(path: Path, name: str = "") -> list[Sheet]:

@@ -35,6 +35,10 @@ class Sheet:
     vfill: set[tuple[int, int]] = field(default_factory=set)
     # Гиперссылки ячеек: текст «Пост» или «Фото», а за ним ссылка.
     links: dict[tuple[int, int], str] = field(default_factory=dict)
+    # Фото в строке (адрес первой картинки) — по нему различаем вещи с одинаковым названием.
+    images: dict[int, str] = field(default_factory=dict)
+    # Цвет вещи, узнанный по фото (см. fetch.label_photos), — когда в таблице его не пишут.
+    row_colors: dict[int, str] = field(default_factory=dict)
 
     def cell(self, r: int, c: int | None) -> str:
         if c is None or r < 0 or r >= len(self.rows):

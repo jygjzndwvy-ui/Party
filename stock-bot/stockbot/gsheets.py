@@ -98,6 +98,8 @@ class _Table(HTMLParser):
                          "struck": self._is_struck("td", a)}
             self.stack = []
         elif self.cell is not None:
+            if tag == "img" and not self.cell.get("img"):
+                self.cell["img"] = html_mod.unescape(a.get("src") or "")
             if tag == "a" and not self.cell.get("href"):
                 self.cell["href"] = unwrap_link(a.get("href") or "")
             if tag == "br":
@@ -170,6 +172,8 @@ def parse_sheet_html(page: str, name: str) -> Sheet:
                         occupied.add((i + di, col + dc))
             text = clean("".join(cell["full"]))
             live = clean("".join(cell["live"]))
+            if nums[i] is not None and cell.get("img", "").startswith(("http://", "https://")):
+                sheet.images.setdefault(nums[i] - 1, cell["img"])
             if nums[i] is not None and text and col < MAX_COLS and nums[i] <= MAX_ROWS:
                 r = nums[i] - 1
                 href = cell.get("href", "")

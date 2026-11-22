@@ -495,7 +495,7 @@ class _SheetParser:
         return {
             "name": name,
             "article": article,
-            "color": s.cell(r, lay.col("color")),
+            "color": s.cell(r, lay.col("color")) or s.row_colors.get(r, ""),
             "price": _price(s.cell(r, pc), s.num(r, pc)) if s.cell(r, pc) else "",
             "status": s.cell(r, lay.col("status")),
             "kind": s.cell(r, lay.col("kind")),
@@ -838,7 +838,7 @@ def parse_sheets(sheets: list[Sheet], config: dict | None = None, mine: bool = F
     parsed = []
     for sheet in sheets:
         layout = None
-        has_cols = any(k for k in config if k not in ("sheet",))
+        has_cols = any(k for k in config if k not in ("sheet", "photo_colors"))
         if config.get("sheet") and norm(config["sheet"]) != norm(sheet.name):
             continue
         if has_cols:

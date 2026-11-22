@@ -251,3 +251,55 @@ def test_russian_clothing_sizes_become_letters(make_xlsx):
     assert list(items["Джинсы Diesel"].sizes) == ["30", "32"]                  # джинсовые размеры — не одежда 42–48
     assert list(items["Jordan 11"].sizes) == ["40", "41", "42", "44"]          # есть нечётный — обувь
     assert list(items["Golden Goose"].sizes) == ["42", "44"]                   # лист «Кроссовки»
+
+
+def test_same_names_told_apart_by_photo_color(make_html):
+    html = make_html([
+        ["Фото", "Название", "Размеры"],
+        ['<img src="https://docs.google.com/sheets-images-rt/A1=w100-h175">', "Ветровка Stone", "S-5, M-2"],
+        ['<img src="https://docs.google.com/sheets-images-rt/B2=w100-h175">', "Ветровка Stone", "S-4, L-3"],
+        ['<img src="https://docs.google.com/sheets-images-rt/C3=w100-h133">', "Ветровка Stone", "XL-1"],
+    ])
+    sheet = parse_sheet_html(html, "Mavlutov")
+    assert sheet.images == {1: "https://docs.google.com/sheets-images-rt/A1=w100-h175",
+                            2: "https://docs.google.com/sheets-images-rt/B2=w100-h175",
+                            3: "https://docs.google.com/sheets-images-rt/C3=w100-h133"}
+    assert len(parse_sheets([sheet]).items) == 1             # без цветов три строки — одна вещь
+    sheet.row_colors = {1: "чёрно-синяя", 2: "чёрно-жёлтая"}
+    table = parse_sheets([sheet], {"photo_colors": {"x": "y"}})
+    got = {i.title: i.sizes for i in table.items}
+    assert got == {"Ветровка Stone, чёрно-синяя": {"S": 5, "M": 2},
+                   "Ветровка Stone, чёрно-жёлтая": {"S": 4, "L": 3},
+                   "Ветровка Stone": {"XL": 1}}            # фото не узнали — остаётся без цвета
+
+
+async def test_label_photos_by_fingerprint():
+    from aiohttp import ClientSession, web
+    from aiohttp.test_utils import TestServer
+
+    from stockbot import fetch
+    from stockbot.workbook import Sheet
+
+    pictures = {"A1": b"blue-jacket", "B2": b"yellow-jacket", "C3": b"blue-jacket"}
+    seen = []
+
+    async def image(request):
+        name, size = request.match_info["name"].split("=", 1)
+        seen.append(size)
+        return web.Response(body=pictures[name], content_type="image/jpeg")
+
+    app = web.Application()
+    app.router.add_get("/sheets-images-rt/{name}", image)
+    server = TestServer(app)
+    await server.start_server()
+    base = str(server.make_url("/sheets-images-rt/"))
+    sheet = Sheet("Mavlutov", rows=[], images={1: base + "A1=w100-h175", 2: base + "B2=w100-h133", 3: base + "C3"})
+    blue = __import__("hashlib").sha1(b"blue-jacket").hexdigest()[:16]
+    try:
+        async with ClientSession() as session:
+            assert await fetch.photo_fingerprint(session, base + "A1=w100-h175") == blue
+            labeled = await fetch.label_photos(session, [sheet], {blue: "чёрно-синяя"})
+    finally:
+        await server.close()
+    assert labeled == 2 and sheet.row_colors == {1: "чёрно-синяя", 3: "чёрно-синяя"}
+    assert set(seen) == {"w100-h100"}                         # превью всегда одного размера
